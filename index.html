@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Portal de Boletas</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="header">
+      <div>
+        <small id="institutionName">Portal RRHH</small>
+        <h1>Consulta de boleta de pago</h1>
+        <p class="hint">Ingrese su CI, PIN y periodo. El archivo se descifra en este navegador.</p>
+      </div>
+      <a class="btn secondary" href="admin.html">Admin RRHH</a>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-head">
+          <h2>Acceso del empleado</h2>
+          <p>Un solo portal por periodo</p>
+        </div>
+        <div class="card-body">
+          <div class="notice">
+            Su PIN es personal. No lo comparta. La clave no se envía al servidor; se usa localmente para abrir el archivo cifrado.
+          </div>
+
+          <div class="form-row">
+            <label for="periodo">Periodo</label>
+            <select id="periodo"></select>
+            <p class="hint">También puede abrirse con link directo: <code>?periodo=2026-05</code></p>
+          </div>
+
+          <div class="form-row">
+            <label for="ci">CI</label>
+            <input id="ci" autocomplete="off" placeholder="Ej. 6770063" />
+          </div>
+
+          <div class="form-row">
+            <label for="pin">PIN</label>
+            <input id="pin" type="password" autocomplete="off" placeholder="Ej. K7M9Q2" />
+            <p class="hint">Clave usada internamente: CI-PIN. Ejemplo: 6770063-K7M9Q2</p>
+          </div>
+
+          <button id="openBtn" class="full">Ver mi boleta</button>
+          <button id="downloadBtn" class="full secondary" style="display:none">Descargar PDF</button>
+
+          <div id="status" class="status"></div>
+        </div>
+      </section>
+
+      <section class="card viewer">
+        <div class="card-head">
+          <h2>Visualizador PDF</h2>
+          <p id="viewerSubtitle">Documento protegido</p>
+        </div>
+        <div class="card-body">
+          <div id="viewerBox" class="locked">
+            <div>
+              <h3>Boleta bloqueada</h3>
+              <p>Complete los datos para visualizar el PDF.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+<script>
+const MAGIC_TEXT = "RRHHENC1";
+const SALT_LEN = 16;
+const NONCE_LEN = 12;
+const PBKDF2_ITERATIONS = 300000;
+
+let sb;
+let currentPdfBlob = null;
+let currentBoleta = null;
+
+function getPeriodoFromUrl() {
+  return qs("periodo") || getConfig().PERIODO_DEFAULT;
+}
+
+async function loadPeriodos() {
+  const cfg = getConfig();
+  setText("institutionName", cfg.INSTITUCION || "Portal RRHH");
+
+  const periodoSelect = document.getElementById("periodo");
+  const urlPeriodo = getPeriodoFromUrl();
+
+  try {
+    const { data, error } = await sb
+      .from(cfg.TABLE_PERIODOS)
+      .select("periodo,nombre,activo")
+      .eq("activo", true)
+      .order("periodo", { ascending: false });
+
+    if (error) throw error;
+
+    periodoSelect.innerHTML = "";
+    const periodos = data && data.length ? data : [{ periodo: urlPeriodo, nombre: formatPeriodoLabel(urlPeriodo), activo: true }];
+
+    periodos.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.periodo;
+      opt.textContent = p.nombre || formatPeriodoLabel(p.periodo);
+      periodoSelect.appendChild(opt);
+    });
+
+    if ([...periodoSelect.options].some(o => o.value === urlPeriodo)) {
+      periodoSelect.value = urlPeriodo;
+    }
+  } catch (err) {
+    periodoSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = urlPeriodo;
+    opt.textContent = formatPeriodoLabel(urlPeriodo);
+    periodoSelect.appendChild(opt);
+  }
+}
+
+async function deriveKey(password, salt) {
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    textToBytes(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256"
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+}
+
+async function decryptEnc(arrayBuffer, password) {
+  const data = new Uint8Array(arrayBuffer);
+  const magicBytes = textToBytes(MAGIC_TEXT);
+
+  for (let i = 0; i < magicBytes.length; i++) {
+    if (data[i] !== magicBytes[i]) {
+      throw new Error("Archivo cifrado no válido.");
+    }
+  }
+
+  let pos = magicBytes.length;
+  const salt = data.slice(pos, pos + SALT_LEN);
+  pos += SALT_LEN;
+
+  const nonce = data.slice(pos, pos + NONCE_LEN);
+  pos += NONCE_LEN;
+
+  const aadLen =
+    (data[pos] << 24) |
+    (data[pos + 1] << 16) |
+    (data[pos + 2] << 8) |
+    data[pos + 3];
+  pos += 4;
+
+  const aad = data.slice(pos, pos + aadLen);
+  pos += aadLen;
+
+  const ciphertext = data.slice(pos);
+  const key = await deriveKey(password, salt);
+
+  return crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: nonce, additionalData: aad },
+    key,
+    ciphertext
+  );
+}
+
+async function markOpened(id) {
+  const cfg = getConfig();
+  await sb
+    .from(cfg.TABLE_BOLETAS)
+    .update({ abierto_en: new Date().toISOString() })
+    .eq("id", id)
+    .is("abierto_en", null);
+}
+
+async function markDownloaded(id) {
+  const cfg = getConfig();
+  await sb
+    .from(cfg.TABLE_BOLETAS)
+    .update({ descargado_en: new Date().toISOString() })
+    .eq("id", id);
+}
+
+async function openBoleta() {
+  const cfg = getConfig();
+  const ci = document.getElementById("ci").value.trim();
+  const pin = document.getElementById("pin").value.trim();
+  const periodo = document.getElementById("periodo").value;
+
+  currentPdfBlob = null;
+  currentBoleta = null;
+  document.getElementById("downloadBtn").style.display = "none";
+
+  if (!ci || !pin || !periodo) {
+    showStatus("status", "error", "Complete CI, PIN y periodo.");
+    return;
+  }
+
+  const openBtn = document.getElementById("openBtn");
+  openBtn.disabled = true;
+  hideStatus("status");
+  document.getElementById("viewerBox").innerHTML = `<div><h3>Procesando...</h3><p>Buscando y descifrando la boleta.</p></div>`;
+
+  try {
+    const { data: rows, error } = await sb
+      .from(cfg.TABLE_BOLETAS)
+      .select("id,empleado_id,nombre,periodo,archivo_path,fecha_expiracion")
+      .eq("empleado_id", ci)
+      .eq("periodo", periodo)
+      .limit(1);
+
+    if (error) throw error;
+    if (!rows || rows.length === 0) {
+      throw new Error("No se pudo abrir la boleta. Revise sus datos.");
+    }
+
+    const boleta = rows[0];
+
+    if (boleta.fecha_expiracion && new Date(boleta.fecha_expiracion) < new Date()) {
+      throw new Error("No se pudo abrir la boleta. Revise sus datos.");
+    }
+
+    const { data: publicData } = sb.storage
+      .from(cfg.BUCKET_NAME)
+      .getPublicUrl(boleta.archivo_path);
+
+    const response = await fetch(publicData.publicUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error("No se pudo descargar el archivo cifrado.");
+
+    const encBuffer = await response.arrayBuffer();
+    const password = `${ci}-${pin}`;
+    const pdfBuffer = await decryptEnc(encBuffer, password);
+
+    currentPdfBlob = new Blob([pdfBuffer], { type: "application/pdf" });
+    currentBoleta = boleta;
+
+    const pdfUrl = URL.createObjectURL(currentPdfBlob);
+    const iframe = document.createElement("iframe");
+    iframe.src = pdfUrl;
+
+    const viewerBox = document.getElementById("viewerBox");
+    viewerBox.className = "";
+    viewerBox.innerHTML = "";
+    viewerBox.appendChild(iframe);
+
+    setText("viewerSubtitle", `${boleta.nombre || "Empleado"} · ${formatPeriodoLabel(periodo)}`);
+    document.getElementById("downloadBtn").style.display = "inline-flex";
+    showStatus("status", "ok", "Boleta abierta correctamente.");
+
+    markOpened(boleta.id);
+  } catch (err) {
+    document.getElementById("viewerBox").className = "locked";
+    document.getElementById("viewerBox").innerHTML = `<div><h3>No se pudo abrir</h3><p>Revise CI, PIN y periodo.</p></div>`;
+    showStatus("status", "error", "No se pudo abrir la boleta. Revise CI, PIN y periodo.");
+  } finally {
+    openBtn.disabled = false;
+  }
+}
+
+async function downloadPdf() {
+  if (!currentPdfBlob || !currentBoleta) return;
+  const filename = `boleta_${currentBoleta.empleado_id}_${currentBoleta.periodo}.pdf`;
+  downloadBlob(currentPdfBlob, filename);
+  await markDownloaded(currentBoleta.id);
+  showStatus("status", "ok", "Boleta descargada correctamente.");
+}
+
+async function init() {
+  try {
+    sb = createSbClient();
+    await loadPeriodos();
+    document.getElementById("openBtn").addEventListener("click", openBoleta);
+    document.getElementById("downloadBtn").addEventListener("click", downloadPdf);
+
+    ["ci", "pin"].forEach(id => {
+      document.getElementById(id).addEventListener("keydown", e => {
+        if (e.key === "Enter") openBoleta();
+      });
+    });
+  } catch (err) {
+    showStatus("status", "error", err.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

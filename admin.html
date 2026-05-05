@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin RRHH - Boletas</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="header">
+      <div>
+        <small id="institutionName">Portal RRHH</small>
+        <h1>Panel Admin RRHH</h1>
+        <p class="hint">Carga archivos .enc, importa CSV y revisa aperturas/descargas.</p>
+      </div>
+      <div class="top-actions">
+        <a class="btn secondary" href="index.html">Vista empleado</a>
+        <button id="logoutBtn" class="secondary" style="display:none">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <section id="loginCard" class="card">
+      <div class="card-head">
+        <h2>Ingreso RRHH</h2>
+        <p>Usa un usuario creado en Supabase Auth</p>
+      </div>
+      <div class="card-body">
+        <div class="grid-2">
+          <div class="form-row">
+            <label for="email">Correo</label>
+            <input id="email" type="email" placeholder="rrhh@empresa.com" />
+          </div>
+          <div class="form-row">
+            <label for="password">Contraseña</label>
+            <input id="password" type="password" placeholder="••••••••" />
+          </div>
+        </div>
+        <button id="loginBtn">Ingresar</button>
+        <div id="loginStatus" class="status"></div>
+      </div>
+    </section>
+
+    <div id="adminContent" style="display:none">
+      <section class="card">
+        <div class="card-head">
+          <h2>Periodo de trabajo</h2>
+          <p>Ejemplo recomendado: 2026-05</p>
+        </div>
+        <div class="card-body">
+          <div class="grid-2">
+            <div class="form-row">
+              <label for="periodo">Periodo</label>
+              <input id="periodo" placeholder="2026-05" />
+            </div>
+            <div class="form-row">
+              <label for="nombrePeriodo">Nombre visible</label>
+              <input id="nombrePeriodo" placeholder="Mayo 2026" />
+            </div>
+          </div>
+          <button id="savePeriodoBtn">Guardar/habilitar periodo</button>
+          <div id="periodoStatus" class="status"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>1. Subir archivos .enc</h2>
+          <p>Seleccione los archivos cifrados generados por el programa Python</p>
+        </div>
+        <div class="card-body">
+          <div class="notice">
+            Si su CSV dice archivo_path = <strong>2026-05/6770063.enc</strong>, los archivos deben subirse a esa misma ruta.
+            Esta pantalla subirá los archivos al periodo indicado: <strong>periodo/nombre_archivo.enc</strong>.
+          </div>
+          <input id="encFiles" type="file" multiple accept=".enc" />
+          <br /><br />
+          <button id="uploadEncBtn">Subir archivos .enc</button>
+          <div id="uploadStatus" class="status"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>2. Importar CSV de boletas</h2>
+          <p>Use el archivo supabase_boletas.csv generado por Python</p>
+        </div>
+        <div class="card-body">
+          <input id="csvFile" type="file" accept=".csv,text/csv" />
+          <br /><br />
+          <button id="importCsvBtn">Importar CSV</button>
+          <div id="csvStatus" class="status"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>3. Seguimiento del periodo</h2>
+          <p>Resumen de apertura y descarga</p>
+        </div>
+        <div class="card-body">
+          <div class="top-actions">
+            <button id="refreshBtn">Actualizar seguimiento</button>
+            <button id="exportBtn" class="secondary">Exportar seguimiento CSV</button>
+          </div>
+
+          <br />
+          <div class="grid-4">
+            <div class="stat"><span>Total</span><strong id="statTotal">0</strong></div>
+            <div class="stat"><span>Abiertas</span><strong id="statOpened">0</strong></div>
+            <div class="stat"><span>Descargadas</span><strong id="statDownloaded">0</strong></div>
+            <div class="stat"><span>Pendientes</span><strong id="statPending">0</strong></div>
+          </div>
+
+          <br />
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>CI</th>
+                  <th>Nombre</th>
+                  <th>Periodo</th>
+                  <th>Archivo</th>
+                  <th>Estado</th>
+                  <th>Abierto</th>
+                  <th>Descargado</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr><td colspan="7">Sin datos.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="trackStatus" class="status"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+<script>
+let sb;
+let loadedRows = [];
+
+function setDefaultPeriod() {
+  const cfg = getConfig();
+  const periodo = qs("periodo") || cfg.PERIODO_DEFAULT || "";
+  document.getElementById("periodo").value = periodo;
+  document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
+  setText("institutionName", cfg.INSTITUCION || "Portal RRHH");
+}
+
+async function checkSession() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    showAdmin();
+  } else {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  document.getElementById("loginCard").style.display = "block";
+  document.getElementById("adminContent").style.display = "none";
+  document.getElementById("logoutBtn").style.display = "none";
+}
+
+function showAdmin() {
+  document.getElementById("loginCard").style.display = "none";
+  document.getElementById("adminContent").style.display = "block";
+  document.getElementById("logoutBtn").style.display = "inline-flex";
+  refreshTracking();
+}
+
+async function login() {
+  hideStatus("loginStatus");
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!email || !password) {
+    showStatus("loginStatus", "error", "Ingrese correo y contraseña.");
+    return;
+  }
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    showStatus("loginStatus", "error", "No se pudo ingresar: " + error.message);
+    return;
+  }
+
+  showAdmin();
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  showLogin();
+}
+
+async function savePeriodo() {
+  const cfg = getConfig();
+  const periodo = document.getElementById("periodo").value.trim();
+  const nombre = document.getElementById("nombrePeriodo").value.trim() || formatPeriodoLabel(periodo);
+
+  if (!periodo) {
+    showStatus("periodoStatus", "error", "Ingrese un periodo, por ejemplo 2026-05.");
+    return;
+  }
+
+  const { error } = await sb
+    .from(cfg.TABLE_PERIODOS)
+    .upsert({ periodo, nombre, activo: true }, { onConflict: "periodo" });
+
+  if (error) {
+    showStatus("periodoStatus", "error", error.message);
+  } else {
+    showStatus("periodoStatus", "ok", "Periodo guardado/habilitado.");
+  }
+}
+
+async function uploadEncFiles() {
+  const cfg = getConfig();
+  const periodo = document.getElementById("periodo").value.trim();
+  const files = document.getElementById("encFiles").files;
+
+  if (!periodo) {
+    showStatus("uploadStatus", "error", "Ingrese el periodo antes de subir.");
+    return;
+  }
+
+  if (!files.length) {
+    showStatus("uploadStatus", "error", "Seleccione archivos .enc.");
+    return;
+  }
+
+  let ok = 0;
+  let fail = 0;
+  const errors = [];
+
+  showStatus("uploadStatus", "info", "Subiendo archivos...");
+
+  for (const file of files) {
+    const path = `${periodo}/${file.name}`;
+    const { error } = await sb.storage
+      .from(cfg.BUCKET_NAME)
+      .upload(path, file, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: "application/octet-stream"
+      });
+
+    if (error) {
+      fail++;
+      errors.push(`${file.name}: ${error.message}`);
+    } else {
+      ok++;
+    }
+  }
+
+  const msg = `Subida terminada.\nOK: ${ok}\nErrores: ${fail}` + (errors.length ? "\n\n" + errors.join("\n") : "");
+  showStatus("uploadStatus", fail ? "error" : "ok", msg);
+}
+
+async function importCsv() {
+  const cfg = getConfig();
+  const file = document.getElementById("csvFile").files[0];
+
+  if (!file) {
+    showStatus("csvStatus", "error", "Seleccione supabase_boletas.csv.");
+    return;
+  }
+
+  showStatus("csvStatus", "info", "Leyendo CSV...");
+  const text = await file.text();
+  const rows = parseCsv(text);
+
+  const required = ["empleado_id", "nombre", "periodo", "archivo_path"];
+  const cleanRows = [];
+
+  for (const r of rows) {
+    const item = {
+      empleado_id: (r.empleado_id || "").trim(),
+      nombre: (r.nombre || "").trim(),
+      periodo: (r.periodo || "").trim(),
+      archivo_path: (r.archivo_path || "").trim(),
+      fecha_expiracion: (r.fecha_expiracion || "").trim() || null
+    };
+
+    if (!item.empleado_id || !item.periodo || !item.archivo_path) continue;
+    cleanRows.push(item);
+  }
+
+  if (!cleanRows.length) {
+    showStatus("csvStatus", "error", "El CSV no tiene filas válidas. Revise columnas: " + required.join(", "));
+    return;
+  }
+
+  showStatus("csvStatus", "info", `Importando ${cleanRows.length} registros...`);
+
+  const chunkSize = 500;
+  let imported = 0;
+
+  for (let i = 0; i < cleanRows.length; i += chunkSize) {
+    const chunk = cleanRows.slice(i, i + chunkSize);
+    const { error } = await sb
+      .from(cfg.TABLE_BOLETAS)
+      .upsert(chunk, { onConflict: "empleado_id,periodo" });
+
+    if (error) {
+      showStatus("csvStatus", "error", "Error importando CSV: " + error.message);
+      return;
+    }
+    imported += chunk.length;
+  }
+
+  showStatus("csvStatus", "ok", `CSV importado correctamente. Registros: ${imported}`);
+  refreshTracking();
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7">Sin datos para este periodo.</td></tr>`;
+    return;
+  }
+
+  for (const r of rows) {
+    const state = r.descargado_en ? "Descargado" : r.abierto_en ? "Abierto" : "Pendiente";
+    const badgeClass = r.descargado_en ? "ok" : r.abierto_en ? "info" : "pending";
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(r.empleado_id)}</td>
+      <td>${escapeHtml(r.nombre || "")}</td>
+      <td>${escapeHtml(r.periodo)}</td>
+      <td>${escapeHtml(r.archivo_path)}</td>
+      <td><span class="badge ${badgeClass}">${state}</span></td>
+      <td>${r.abierto_en ? new Date(r.abierto_en).toLocaleString() : "—"}</td>
+      <td>${r.descargado_en ? new Date(r.descargado_en).toLocaleString() : "—"}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+async function refreshTracking() {
+  const cfg = getConfig();
+  const periodo = document.getElementById("periodo").value.trim();
+  if (!periodo) return;
+
+  const { data, error } = await sb
+    .from(cfg.TABLE_BOLETAS)
+    .select("id,empleado_id,nombre,periodo,archivo_path,abierto_en,descargado_en,fecha_expiracion,created_at")
+    .eq("periodo", periodo)
+    .order("nombre", { ascending: true });
+
+  if (error) {
+    showStatus("trackStatus", "error", error.message);
+    return;
+  }
+
+  loadedRows = data || [];
+  const total = loadedRows.length;
+  const opened = loadedRows.filter(r => r.abierto_en).length;
+  const downloaded = loadedRows.filter(r => r.descargado_en).length;
+  const pending = total - opened;
+
+  setText("statTotal", total);
+  setText("statOpened", opened);
+  setText("statDownloaded", downloaded);
+  setText("statPending", pending);
+
+  renderTable(loadedRows);
+  hideStatus("trackStatus");
+}
+
+function exportTracking() {
+  if (!loadedRows.length) {
+    showStatus("trackStatus", "error", "No hay datos para exportar.");
+    return;
+  }
+
+  const headers = ["empleado_id", "nombre", "periodo", "archivo_path", "estado", "abierto_en", "descargado_en"];
+  const lines = [headers.join(",")];
+
+  for (const r of loadedRows) {
+    const estado = r.descargado_en ? "Descargado" : r.abierto_en ? "Abierto" : "Pendiente";
+    const values = [
+      r.empleado_id,
+      r.nombre || "",
+      r.periodo,
+      r.archivo_path,
+      estado,
+      r.abierto_en || "",
+      r.descargado_en || ""
+    ].map(v => `"${String(v).replaceAll('"', '""')}"`);
+    lines.push(values.join(","));
+  }
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const periodo = document.getElementById("periodo").value.trim();
+  downloadBlob(blob, `seguimiento_${periodo}.csv`);
+}
+
+async function init() {
+  try {
+    sb = createSbClient();
+    setDefaultPeriod();
+    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("savePeriodoBtn").addEventListener("click", savePeriodo);
+    document.getElementById("uploadEncBtn").addEventListener("click", uploadEncFiles);
+    document.getElementById("importCsvBtn").addEventListener("click", importCsv);
+    document.getElementById("refreshBtn").addEventListener("click", refreshTracking);
+    document.getElementById("exportBtn").addEventListener("click", exportTracking);
+
+    document.getElementById("periodo").addEventListener("change", () => {
+      document.getElementById("nombrePeriodo").value = formatPeriodoLabel(document.getElementById("periodo").value.trim());
+      refreshTracking();
+    });
+
+    await checkSession();
+  } catch (err) {
+    showStatus("loginStatus", "error", err.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
