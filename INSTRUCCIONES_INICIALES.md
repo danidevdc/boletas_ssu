@@ -1,11 +1,13 @@
+# Instrucciones iniciales (Supabase + GitHub Pages)
+
 FRONTEND BOLETAS RRHH - GitHub Pages + Supabase
 =================================================
 
 ARCHIVOS INCLUIDOS
 ------------------
-index.html              Página del empleado.
-admin.html              Página RRHH.
-config.js               Configuración de Supabase.
+index.html              Pagina del empleado.
+admin.html              Pagina RRHH.
+config.js               Configuracion de Supabase.
 shared.js               Funciones compartidas.
 styles.css              Estilos.
 supabase_setup.sql      SQL para crear tablas y policies de prueba.
@@ -23,7 +25,7 @@ FLUJO
    - crear usuario admin en Authentication
 4. Subir estos archivos a GitHub.
 5. En admin.html:
-   - iniciar sesión
+   - iniciar sesion
    - seleccionar periodo
    - subir archivos .enc
    - importar supabase_boletas.csv
@@ -51,24 +53,24 @@ CONFIGURAR SUPABASE
    Authentication > Users > Add user
    Ejemplo:
    correo: rrhh@demo.com
-   contraseña: una contraseña fuerte
+   contrasena: una contrasena fuerte
 
 IMPORTANTE SOBRE SEGURIDAD
 --------------------------
 Este paquete es para PILOTO.
 
 Para que el empleado pueda consultar desde GitHub Pages sin backend propio:
-- La tabla boletas permite SELECT público.
-- La tabla boletas permite UPDATE público para marcar abierto/descargado.
-- El bucket boletas es público, pero solo contiene archivos .enc cifrados.
+- La tabla boletas permite SELECT publico.
+- La tabla boletas permite UPDATE publico para marcar abierto/descargado.
+- El bucket boletas es publico, pero solo contiene archivos .enc cifrados.
 
-Esto permite probar el flujo, pero para producción se recomienda:
+Esto permite probar el flujo, pero para produccion se recomienda:
 - backend institucional o Supabase Edge Function;
 - bucket privado;
 - URLs firmadas;
 - tracking mediante API;
-- autenticación institucional;
-- policies más restrictivas.
+- autenticacion institucional;
+- policies mas restrictivas.
 
 PERIODO
 -------
@@ -78,7 +80,7 @@ Usa formato:
 El link mensual puede ser:
 https://TU_USUARIO.github.io/TU_REPO/?periodo=2026-05
 
-El usuario también puede cambiar periodo desde el selector si existen periodos activos.
+El usuario tambien puede cambiar periodo desde el selector si existen periodos activos.
 
 RUTAS DE ARCHIVOS
 -----------------
@@ -89,12 +91,12 @@ Entonces en Supabase Storage debe existir:
 bucket boletas / 2026-05 / 6770063.enc
 
 En admin.html, si el periodo es 2026-05 y subes 6770063.enc,
-se subirá automáticamente como:
+se subira automaticamente como:
 2026-05/6770063.enc
 
 GITHUB PAGES
 ------------
-Sube estos archivos a la raíz del repositorio:
+Sube estos archivos a la raiz del repositorio:
 
 index.html
 admin.html
@@ -107,4 +109,3 @@ Settings > Pages > Deploy from branch > main / root
 
 Luego abre:
 https://TU_USUARIO.github.io/TU_REPO/
-
