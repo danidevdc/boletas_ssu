@@ -479,7 +479,6 @@ async function uploadEncFiles() {
     for (const file of files) {
       const path = `${periodo}/${file.name}`;
       const { error } = await sb.storage
-  setPeriodoUi("");
         .from(cfg.BUCKET_NAME)
         .upload(path, file, {
           cacheControl: "3600",
