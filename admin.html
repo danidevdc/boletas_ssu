@@ -23,6 +23,7 @@
       </div>
       <div class="top-actions">
         <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
+        <a class="btn secondary" href="seguimiento.html">Seguimiento</a>
         <a id="viewEmployeeLink" class="btn secondary" href="index.html">Vista empleado</a>
         <button id="logoutBtn" class="secondary" style="display:none">Cerrar sesión</button>
       </div>
@@ -112,53 +113,11 @@
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>3. Seguimiento del periodo</h2>
-          <p>Resumen de apertura y descarga</p>
-        </div>
-        <div class="card-body">
-          <div class="top-actions">
-            <button id="refreshBtn">Actualizar seguimiento</button>
-            <button id="exportBtn" class="secondary">Exportar seguimiento CSV</button>
-          </div>
-
-          <br />
-          <div class="grid-4">
-            <div class="stat"><span>Total</span><strong id="statTotal">0</strong></div>
-            <div class="stat"><span>Abiertas</span><strong id="statOpened">0</strong></div>
-            <div class="stat"><span>Descargadas</span><strong id="statDownloaded">0</strong></div>
-            <div class="stat"><span>Pendientes</span><strong id="statPending">0</strong></div>
-          </div>
-
-          <br />
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>CI</th>
-                  <th>Nombre</th>
-                  <th>Periodo</th>
-                  <th>Archivo</th>
-                  <th>Estado</th>
-                  <th>Abierto</th>
-                  <th>Descargado</th>
-                </tr>
-              </thead>
-              <tbody id="tableBody">
-                <tr><td colspan="7">Sin datos.</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div id="trackStatus" class="status"></div>
-        </div>
-      </section>
     </div>
   </main>
 
 <script>
 let sb;
-let loadedRows = [];
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 let sessionTimer = null;
 
@@ -172,80 +131,6 @@ function applyTheme(theme) {
 function initThemeToggle() {
   const stored = localStorage.getItem("theme");
   const initial = stored === "dark" ? "dark" : "light";
-  applyTheme(initial);
-  document.getElementById("themeToggle").addEventListener("click", () => {
-    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    applyTheme(next);
-  });
-}
-
-function setDefaultPeriod() {
-  const cfg = getConfig();
-  const periodo = qs("periodo") || cfg.PERIODO_DEFAULT || "";
-  document.getElementById("periodo").value = periodo;
-  document.getElementById("nombrePeriodo").value = periodo ? formatPeriodoLabel(periodo) : "";
-  setText("institutionName", cfg.INSTITUCION || "Portal RRHH");
-  document.getElementById("periodCurrentValue").textContent = periodo ? formatPeriodoLabel(periodo) : "-";
-}
-
-async function checkSession() {
-  const { data } = await sb.auth.getSession();
-  if (data.session) {
-    showAdmin();
-  } else {
-    showLogin();
-  }
-}
-
-function buildEmployeeLink(periodo) {
-  if (!periodo) return "";
-  const url = new URL(window.location.href);
-  url.pathname = url.pathname.replace(/admin\.html$/i, "index.html");
-  url.searchParams.set("periodo", periodo);
-  return url.toString();
-}
-
-function setPeriodoUi(periodo) {
-  const nameInput = document.getElementById("nombrePeriodo");
-  if (!periodo) {
-    document.getElementById("periodo").value = "";
-    nameInput.value = "";
-    document.getElementById("periodCurrentValue").textContent = "-";
-    return;
-  }
-  document.getElementById("periodo").value = periodo;
-  nameInput.value = formatPeriodoLabel(periodo);
-  document.getElementById("periodCurrentValue").textContent = nameInput.value;
-}
-
-async function loadPeriodosList() {
-  const cfg = getConfig();
-  const list = document.getElementById("periodListBody");
-  if (!list) return;
-
-  const { data, error } = await sb
-    .from(cfg.TABLE_PERIODOS)
-    .select("periodo,nombre,activo")
-    .order("periodo", { ascending: false });
-
-  if (error) {
-    list.textContent = "No se pudo cargar.";
-    return;
-  }
-
-  if (!data || data.length === 0) {
-    list.textContent = "-";
-    if (!document.getElementById("periodo").value.trim()) {
-      setPeriodoUi("");
-    }
-    return;
-  }
-
-  list.innerHTML = "";
-  data.forEach(row => {
-    const item = document.createElement("div");
-    item.className = "period-list-item";
-    const label = document.createElement("div");
     label.className = "period-list-label";
     label.textContent = row.periodo;
     const name = document.createElement("div");
@@ -355,7 +240,6 @@ function showAdmin() {
   document.getElementById("loginCard").style.display = "none";
   document.getElementById("adminContent").style.display = "block";
   document.getElementById("logoutBtn").style.display = "inline-flex";
-  refreshTracking();
   startSessionTimer();
 }
 
@@ -637,29 +521,10 @@ async function refreshTracking() {
   if (!periodo) return;
 
   const { data, error } = await sb
-    .from(cfg.TABLE_BOLETAS)
-    .select("id,empleado_id,nombre,periodo,archivo_path,abierto_en,descargado_en,fecha_expiracion,created_at")
-    .eq("periodo", periodo)
-    .order("nombre", { ascending: true });
 
-  if (error) {
-    showStatus("trackStatus", "error", error.message);
-    return;
-  }
 
-  loadedRows = data || [];
-  const total = loadedRows.length;
-  const opened = loadedRows.filter(r => r.abierto_en).length;
-  const downloaded = loadedRows.filter(r => r.descargado_en).length;
-  const pending = total - opened;
 
-  setText("statTotal", total);
-  setText("statOpened", opened);
-  setText("statDownloaded", downloaded);
-  setText("statPending", pending);
 
-  renderTable(loadedRows);
-  hideStatus("trackStatus");
 }
 
 function exportTracking() {
@@ -734,12 +599,9 @@ async function init() {
       }
       showStatus("csvStatus", "ok", "Link copiado correctamente.");
     });
-    document.getElementById("refreshBtn").addEventListener("click", refreshTracking);
-    document.getElementById("exportBtn").addEventListener("click", exportTracking);
 
     document.getElementById("periodo").addEventListener("change", () => {
       setPeriodoUi(document.getElementById("periodo").value.trim());
-      refreshTracking();
     });
 
     window.addEventListener("beforeunload", () => {
