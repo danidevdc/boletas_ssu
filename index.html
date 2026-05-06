@@ -117,7 +117,7 @@ async function loadPeriodos() {
     if (error) throw error;
 
     periodoSelect.innerHTML = "";
-    const periodos = data && data.length ? data : [{ periodo: urlPeriodo, nombre: formatPeriodoLabel(urlPeriodo), activo: true }];
+    const periodos = data && data.length ? data : (urlPeriodo ? [{ periodo: urlPeriodo, nombre: formatPeriodoLabel(urlPeriodo), activo: true }] : []);
 
     periodos.forEach(p => {
       const opt = document.createElement("option");
@@ -128,6 +128,21 @@ async function loadPeriodos() {
 
     if ([...periodoSelect.options].some(o => o.value === urlPeriodo)) {
       periodoSelect.value = urlPeriodo;
+    } else if (periodoSelect.options.length > 0) {
+      periodoSelect.selectedIndex = 0;
+      if (urlPeriodo) {
+        showStatus("status", "error", "El periodo del link no esta disponible.");
+      }
+    }
+
+    if (periodoSelect.options.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "-";
+      opt.disabled = true;
+      opt.selected = true;
+      periodoSelect.appendChild(opt);
+      showStatus("status", "info", "No hay periodos activos.");
     }
   } catch (err) {
     periodoSelect.innerHTML = "";

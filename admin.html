@@ -164,6 +164,8 @@
 <script>
 let sb;
 let loadedRows = [];
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+let sessionTimer = null;
 
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -186,9 +188,9 @@ function setDefaultPeriod() {
   const cfg = getConfig();
   const periodo = qs("periodo") || cfg.PERIODO_DEFAULT || "";
   document.getElementById("periodo").value = periodo;
-  document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
+  document.getElementById("nombrePeriodo").value = periodo ? formatPeriodoLabel(periodo) : "";
   setText("institutionName", cfg.INSTITUCION || "Portal RRHH");
-  document.getElementById("periodCurrentValue").textContent = formatPeriodoLabel(periodo) || "—";
+  document.getElementById("periodCurrentValue").textContent = periodo ? formatPeriodoLabel(periodo) : "-";
 }
 
 async function checkSession() {
@@ -209,10 +211,16 @@ function buildEmployeeLink(periodo) {
 }
 
 function setPeriodoUi(periodo) {
-  if (!periodo) return;
+  const nameInput = document.getElementById("nombrePeriodo");
+  if (!periodo) {
+    document.getElementById("periodo").value = "";
+    nameInput.value = "";
+    document.getElementById("periodCurrentValue").textContent = "-";
+    return;
+  }
   document.getElementById("periodo").value = periodo;
-  document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
-  document.getElementById("periodCurrentValue").textContent = formatPeriodoLabel(periodo);
+  nameInput.value = formatPeriodoLabel(periodo);
+  document.getElementById("periodCurrentValue").textContent = nameInput.value;
 }
 
 async function loadPeriodosList() {
@@ -231,7 +239,10 @@ async function loadPeriodosList() {
   }
 
   if (!data || data.length === 0) {
-    list.textContent = "—";
+    list.textContent = "-";
+    if (!document.getElementById("periodo").value.trim()) {
+      setPeriodoUi("");
+    }
     return;
   }
 
@@ -332,6 +343,7 @@ function showLogin() {
   document.getElementById("loginCard").style.display = "block";
   document.getElementById("adminContent").style.display = "none";
   document.getElementById("logoutBtn").style.display = "none";
+  stopSessionTimer();
 }
 
 function showAdmin() {
@@ -339,6 +351,7 @@ function showAdmin() {
   document.getElementById("adminContent").style.display = "block";
   document.getElementById("logoutBtn").style.display = "inline-flex";
   refreshTracking();
+  startSessionTimer();
 }
 
 async function login() {
@@ -365,6 +378,26 @@ async function logout() {
   showLogin();
 }
 
+function startSessionTimer() {
+  resetSessionTimer();
+}
+
+function stopSessionTimer() {
+  if (sessionTimer) {
+    clearTimeout(sessionTimer);
+    sessionTimer = null;
+  }
+}
+
+function resetSessionTimer() {
+  stopSessionTimer();
+  sessionTimer = setTimeout(async () => {
+    await sb.auth.signOut();
+    showStatus("loginStatus", "info", "Sesion expirada por inactividad.");
+    showLogin();
+  }, SESSION_TIMEOUT_MS);
+}
+
 function parsePeriodoFromCsvName(filename) {
   const match = filename.match(/supabase_boletas-(\d{2})-(\d{4})\.csv$/i);
   if (!match) return "";
@@ -376,7 +409,8 @@ function parsePeriodoFromCsvName(filename) {
 async function savePeriodo() {
   const cfg = getConfig();
   const periodo = document.getElementById("periodo").value.trim();
-  const nombre = formatPeriodoLabel(periodo);
+  const nombreInput = document.getElementById("nombrePeriodo").value.trim();
+  const nombre = nombreInput || formatPeriodoLabel(periodo);
 
   if (!periodo) {
     showStatus("periodoStatus", "error", "Ingrese un periodo, por ejemplo 2026-05.");
@@ -445,6 +479,7 @@ async function uploadEncFiles() {
     for (const file of files) {
       const path = `${periodo}/${file.name}`;
       const { error } = await sb.storage
+  setPeriodoUi("");
         .from(cfg.BUCKET_NAME)
         .upload(path, file, {
           cacheControl: "3600",
@@ -652,6 +687,13 @@ async function init() {
     initThemeToggle();
     setDefaultPeriod();
     loadPeriodosList();
+    ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach(evt => {
+      window.addEventListener(evt, () => {
+        if (document.getElementById("adminContent").style.display !== "none") {
+          resetSessionTimer();
+        }
+      }, { passive: true });
+    });
     document.getElementById("csvFile").addEventListener("change", () => {
       const file = document.getElementById("csvFile").files[0];
       if (!file) return;
@@ -659,14 +701,25 @@ async function init() {
       if (!periodo) return;
       setPeriodoUi(periodo);
     });
+    document.getElementById("nombrePeriodo").addEventListener("input", e => {
+      const value = e.target.value.trim();
+      document.getElementById("periodCurrentValue").textContent = value || "-";
+    });
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
     document.getElementById("deletePeriodoBtn").addEventListener("click", deletePeriodo);
     document.getElementById("processBtn").addEventListener("click", processPeriodo);
     document.getElementById("copyLinkBtn").addEventListener("click", () => {
-      const link = document.getElementById("periodLink").value;
+      const linkInput = document.getElementById("periodLink");
+      const link = linkInput.value;
       if (!link) return;
-      navigator.clipboard.writeText(link);
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(link);
+      } else {
+        linkInput.focus();
+        linkInput.select();
+        document.execCommand("copy");
+      }
       showStatus("csvStatus", "ok", "Link copiado correctamente.");
     });
     document.getElementById("refreshBtn").addEventListener("click", refreshTracking);
