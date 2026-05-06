@@ -20,6 +20,7 @@
         <h1>Consulta de boleta de pago</h1>
         <p class="hint">Ingrese su CI, PIN y periodo. El archivo se descifra en este navegador.</p>
       </div>
+      <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
     </div>
 
     <div class="grid">
@@ -57,7 +58,7 @@
         </div>
       </section>
 
-      <section class="card viewer">
+      <section class="card viewer is-hidden" id="viewerCard">
         <div class="card-head">
           <h2>Visualizador PDF</h2>
           <p id="viewerSubtitle">Documento protegido</p>
@@ -218,6 +219,7 @@ async function openBoleta() {
   currentPdfBlob = null;
   currentBoleta = null;
   document.getElementById("downloadBtn").style.display = "none";
+  document.getElementById("viewerCard").classList.add("is-hidden");
 
 
   if (!ci || !pin || !periodo) {
@@ -273,6 +275,7 @@ async function openBoleta() {
     viewerBox.appendChild(iframe);
 
     setText("viewerSubtitle", `${boleta.nombre || "Empleado"} · ${formatPeriodoLabel(periodo)}`);
+    document.getElementById("viewerCard").classList.remove("is-hidden");
     document.getElementById("downloadBtn").style.display = "inline-flex";
     showStatus("status", "ok", "Boleta abierta correctamente.");
 
@@ -286,6 +289,23 @@ async function openBoleta() {
   }
 }
 
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("theme", theme);
+  const btn = document.getElementById("themeToggle");
+  if (btn) btn.textContent = theme === "dark" ? "MODO CLARO" : "MODO OSCURO";
+}
+
+function initThemeToggle() {
+  const stored = localStorage.getItem("theme");
+  const initial = stored === "dark" ? "dark" : "light";
+  applyTheme(initial);
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+  });
+}
+
 async function downloadPdf() {
   if (!currentPdfBlob || !currentBoleta) return;
   const filename = `boleta_${currentBoleta.empleado_id}_${currentBoleta.periodo}.pdf`;
@@ -297,6 +317,7 @@ async function downloadPdf() {
 async function init() {
   try {
     sb = createSbClient();
+    initThemeToggle();
     await loadPeriodos();
     document.getElementById("openBtn").addEventListener("click", openBoleta);
     document.getElementById("downloadBtn").addEventListener("click", downloadPdf);

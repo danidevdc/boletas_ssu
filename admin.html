@@ -21,6 +21,7 @@
         <p class="hint">Carga archivos .enc, importa CSV y revisa aperturas/descargas.</p>
       </div>
       <div class="top-actions">
+        <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
         <a class="btn secondary" href="index.html">Vista empleado</a>
         <button id="logoutBtn" class="secondary" style="display:none">Cerrar sesión</button>
       </div>
@@ -146,6 +147,23 @@
 <script>
 let sb;
 let loadedRows = [];
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("theme", theme);
+  const btn = document.getElementById("themeToggle");
+  if (btn) btn.textContent = theme === "dark" ? "MODO CLARO" : "MODO OSCURO";
+}
+
+function initThemeToggle() {
+  const stored = localStorage.getItem("theme");
+  const initial = stored === "dark" ? "dark" : "light";
+  applyTheme(initial);
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+  });
+}
 
 function setDefaultPeriod() {
   const cfg = getConfig();
@@ -419,6 +437,7 @@ function exportTracking() {
 async function init() {
   try {
     sb = createSbClient();
+    initThemeToggle();
     setDefaultPeriod();
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
