@@ -63,10 +63,9 @@
             </div>
             <div class="form-row">
               <label for="nombrePeriodo">Nombre visible</label>
-              <input id="nombrePeriodo" placeholder="Mayo 2026" />
+              <input id="nombrePeriodo" placeholder="Mayo 2026" readonly />
             </div>
           </div>
-          <button id="savePeriodoBtn">Guardar/habilitar periodo</button>
           <div id="periodoStatus" class="status"></div>
         </div>
       </section>
@@ -82,8 +81,6 @@
             Esta pantalla subirá los archivos al periodo indicado: <strong>periodo/nombre_archivo.enc</strong>.
           </div>
           <input id="encFiles" type="file" multiple accept=".enc,.zip" />
-          <br /><br />
-          <button id="uploadEncBtn">Subir archivos .enc</button>
           <div id="uploadStatus" class="status"></div>
         </div>
       </section>
@@ -95,9 +92,17 @@
         </div>
         <div class="card-body">
           <input id="csvFile" type="file" accept=".csv,text/csv" />
-          <br /><br />
-          <button id="importCsvBtn">Importar CSV</button>
           <div id="csvStatus" class="status"></div>
+          <div class="form-row" style="margin-top:16px;">
+            <button id="processBtn" class="full">Procesar periodo</button>
+          </div>
+          <div id="periodLinkWrap" class="period-link" style="display:none;">
+            <div class="period-link-label">LINK PARA EMPLEADOS</div>
+            <div class="period-link-row">
+              <input id="periodLink" readonly />
+              <button id="copyLinkBtn" class="secondary" type="button">Copiar</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -183,6 +188,20 @@ async function checkSession() {
   }
 }
 
+function buildEmployeeLink(periodo) {
+  if (!periodo) return "";
+  const url = new URL(window.location.href);
+  url.pathname = url.pathname.replace(/admin\.html$/i, "index.html");
+  url.searchParams.set("periodo", periodo);
+  return url.toString();
+}
+
+function setPeriodoUi(periodo) {
+  if (!periodo) return;
+  document.getElementById("periodo").value = periodo;
+  document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
+}
+
 function showLogin() {
   document.getElementById("loginCard").style.display = "block";
   document.getElementById("adminContent").style.display = "none";
@@ -231,11 +250,11 @@ function parsePeriodoFromCsvName(filename) {
 async function savePeriodo() {
   const cfg = getConfig();
   const periodo = document.getElementById("periodo").value.trim();
-  const nombre = document.getElementById("nombrePeriodo").value.trim() || formatPeriodoLabel(periodo);
+  const nombre = formatPeriodoLabel(periodo);
 
   if (!periodo) {
     showStatus("periodoStatus", "error", "Ingrese un periodo, por ejemplo 2026-05.");
-    return;
+    return false;
   }
 
   const { error } = await sb
@@ -244,8 +263,10 @@ async function savePeriodo() {
 
   if (error) {
     showStatus("periodoStatus", "error", error.message);
+    return false;
   } else {
     showStatus("periodoStatus", "ok", "Periodo guardado/habilitado.");
+    return true;
   }
 }
 
@@ -256,12 +277,12 @@ async function uploadEncFiles() {
 
   if (!periodo) {
     showStatus("uploadStatus", "error", "Ingrese el periodo antes de subir.");
-    return;
+    return false;
   }
 
   if (!files.length) {
     showStatus("uploadStatus", "error", "Seleccione archivos .enc.");
-    return;
+    return false;
   }
 
   let ok = 0;
@@ -316,6 +337,7 @@ async function uploadEncFiles() {
 
   const msg = `Subida terminada.\nOK: ${ok}\nErrores: ${fail}` + (errors.length ? "\n\n" + errors.join("\n") : "");
   showStatus("uploadStatus", fail ? "error" : "ok", msg);
+  return fail === 0;
 }
 
 async function importCsv() {
@@ -324,7 +346,7 @@ async function importCsv() {
 
   if (!file) {
     showStatus("csvStatus", "error", "Seleccione supabase_boletas.csv.");
-    return;
+    return false;
   }
 
   showStatus("csvStatus", "info", "Leyendo CSV...");
@@ -351,7 +373,7 @@ async function importCsv() {
 
   if (!cleanRows.length) {
     showStatus("csvStatus", "error", "El CSV no tiene filas válidas. Revise columnas: " + required.join(", "));
-    return;
+    return false;
   }
 
   showStatus("csvStatus", "info", `Importando ${cleanRows.length} registros...`);
@@ -367,13 +389,39 @@ async function importCsv() {
 
     if (error) {
       showStatus("csvStatus", "error", "Error importando CSV: " + error.message);
-      return;
+      return false;
     }
     imported += chunk.length;
   }
 
   showStatus("csvStatus", "ok", `CSV importado correctamente. Registros: ${imported}`);
   refreshTracking();
+  return true;
+}
+
+async function processPeriodo() {
+  document.getElementById("periodLinkWrap").style.display = "none";
+  const periodo = document.getElementById("periodo").value.trim();
+  if (!periodo) {
+    showStatus("periodoStatus", "error", "Ingrese un periodo, por ejemplo 2026-05.");
+    return;
+  }
+
+  setPeriodoUi(periodo);
+
+  const uploadOk = await uploadEncFiles();
+  if (!uploadOk) return;
+
+  const csvOk = await importCsv();
+  if (!csvOk) return;
+
+  const periodOk = await savePeriodo();
+  if (!periodOk) return;
+
+  const link = buildEmployeeLink(periodo);
+  const linkInput = document.getElementById("periodLink");
+  linkInput.value = link;
+  document.getElementById("periodLinkWrap").style.display = "block";
 }
 
 function renderTable(rows) {
@@ -481,19 +529,22 @@ async function init() {
       if (!file) return;
       const periodo = parsePeriodoFromCsvName(file.name);
       if (!periodo) return;
-      document.getElementById("periodo").value = periodo;
-      document.getElementById("nombrePeriodo").value = periodo;
+      setPeriodoUi(periodo);
     });
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
-    document.getElementById("savePeriodoBtn").addEventListener("click", savePeriodo);
-    document.getElementById("uploadEncBtn").addEventListener("click", uploadEncFiles);
-    document.getElementById("importCsvBtn").addEventListener("click", importCsv);
+    document.getElementById("processBtn").addEventListener("click", processPeriodo);
+    document.getElementById("copyLinkBtn").addEventListener("click", () => {
+      const link = document.getElementById("periodLink").value;
+      if (!link) return;
+      navigator.clipboard.writeText(link);
+      showStatus("csvStatus", "ok", "Link copiado correctamente.");
+    });
     document.getElementById("refreshBtn").addEventListener("click", refreshTracking);
     document.getElementById("exportBtn").addEventListener("click", exportTracking);
 
     document.getElementById("periodo").addEventListener("change", () => {
-      document.getElementById("nombrePeriodo").value = formatPeriodoLabel(document.getElementById("periodo").value.trim());
+      setPeriodoUi(document.getElementById("periodo").value.trim());
       refreshTracking();
     });
 

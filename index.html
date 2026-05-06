@@ -58,20 +58,6 @@
         </div>
       </section>
 
-      <section class="card viewer is-hidden" id="viewerCard">
-        <div class="card-head">
-          <h2>Visualizador PDF</h2>
-          <p id="viewerSubtitle">Documento protegido</p>
-        </div>
-        <div class="card-body">
-          <div id="viewerBox" class="locked">
-            <div>
-              <h3>Boleta bloqueada</h3>
-              <p>Complete los datos para visualizar el PDF.</p>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
     <a class="admin-fab" href="admin.html" aria-label="Admin RRHH">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -81,15 +67,34 @@
     </a>
   </main>
 
+  <div id="viewerOverlay" class="viewer-overlay is-hidden" aria-hidden="true">
+    <div class="viewer-shell">
+      <div class="viewer-bar">
+        <div>
+          <div class="viewer-label">VISOR PDF</div>
+          <div id="viewerSubtitle" class="viewer-title">Documento protegido</div>
+        </div>
+        <div class="viewer-actions">
+          <div id="viewerCountdown" class="viewer-countdown">02:00</div>
+          <button id="viewerClose" class="secondary" type="button">Cerrar</button>
+        </div>
+      </div>
+      <iframe id="viewerFrame" title="Boleta PDF"></iframe>
+    </div>
+  </div>
+
 <script>
 const MAGIC_TEXT = "RRHHENC1";
 const SALT_LEN = 16;
 const NONCE_LEN = 12;
 const PBKDF2_ITERATIONS = 300000;
+const VIEWER_TIMEOUT_MS = 2 * 60 * 1000;
 
 let sb;
 let currentPdfBlob = null;
 let currentBoleta = null;
+let viewerTimer = null;
+let viewerInterval = null;
 
 function getPeriodoFromUrl() {
   return qs("periodo") || getConfig().PERIODO_DEFAULT;
@@ -219,7 +224,7 @@ async function openBoleta() {
   currentPdfBlob = null;
   currentBoleta = null;
   document.getElementById("downloadBtn").style.display = "none";
-  document.getElementById("viewerCard").classList.add("is-hidden");
+  closeViewer();
 
 
   if (!ci || !pin || !periodo) {
@@ -230,7 +235,7 @@ async function openBoleta() {
   const openBtn = document.getElementById("openBtn");
   openBtn.disabled = true;
   hideStatus("status");
-  document.getElementById("viewerBox").innerHTML = `<div><h3>Procesando...</h3><p>Buscando y descifrando la boleta.</p></div>`;
+  showStatus("status", "info", "Procesando... Buscando y descifrando la boleta.");
 
   try {
     const { data: rows, error } = await sb
@@ -266,23 +271,12 @@ async function openBoleta() {
     currentBoleta = boleta;
 
     const pdfUrl = URL.createObjectURL(currentPdfBlob);
-    const iframe = document.createElement("iframe");
-    iframe.src = pdfUrl;
-
-    const viewerBox = document.getElementById("viewerBox");
-    viewerBox.className = "";
-    viewerBox.innerHTML = "";
-    viewerBox.appendChild(iframe);
-
-    setText("viewerSubtitle", `${boleta.nombre || "Empleado"} · ${formatPeriodoLabel(periodo)}`);
-    document.getElementById("viewerCard").classList.remove("is-hidden");
+    openViewer(pdfUrl, `${boleta.nombre || "Empleado"} · ${formatPeriodoLabel(periodo)}`);
     document.getElementById("downloadBtn").style.display = "inline-flex";
     showStatus("status", "ok", "Boleta abierta correctamente.");
 
     markOpened(boleta.id);
   } catch (err) {
-    document.getElementById("viewerBox").className = "locked";
-    document.getElementById("viewerBox").innerHTML = `<div><h3>No se pudo abrir</h3><p>Revise CI, PIN y periodo.</p></div>`;
     showStatus("status", "error", "No se pudo abrir la boleta. Revise CI, PIN y periodo.");
   } finally {
     openBtn.disabled = false;
@@ -306,11 +300,71 @@ function initThemeToggle() {
   });
 }
 
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = String(Math.floor(total / 60)).padStart(2, "0");
+  const seconds = String(total % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function openViewer(pdfUrl, subtitle) {
+  const overlay = document.getElementById("viewerOverlay");
+  const frame = document.getElementById("viewerFrame");
+  const countdown = document.getElementById("viewerCountdown");
+  frame.src = pdfUrl;
+  setText("viewerSubtitle", subtitle);
+  overlay.classList.remove("is-hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("viewer-open");
+
+  clearTimeout(viewerTimer);
+  clearInterval(viewerInterval);
+
+  const startedAt = Date.now();
+  const updateCountdown = () => {
+    const elapsed = Date.now() - startedAt;
+    const remaining = VIEWER_TIMEOUT_MS - elapsed;
+    countdown.textContent = formatCountdown(remaining);
+    if (remaining <= 0) {
+      closeViewer();
+      showStatus("status", "info", "Visor cerrado por tiempo máximo.");
+    }
+  };
+
+  updateCountdown();
+  viewerInterval = setInterval(updateCountdown, 1000);
+  viewerTimer = setTimeout(() => {
+    closeViewer();
+    showStatus("status", "info", "Visor cerrado por tiempo máximo.");
+  }, VIEWER_TIMEOUT_MS);
+}
+
+function closeViewer() {
+  const overlay = document.getElementById("viewerOverlay");
+  if (!overlay) return;
+  overlay.classList.add("is-hidden");
+  overlay.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("viewer-open");
+
+  const frame = document.getElementById("viewerFrame");
+  if (frame) frame.src = "";
+
+  clearTimeout(viewerTimer);
+  clearInterval(viewerInterval);
+  viewerTimer = null;
+  viewerInterval = null;
+
+  document.getElementById("downloadBtn").style.display = "none";
+  currentPdfBlob = null;
+  currentBoleta = null;
+}
+
 async function downloadPdf() {
   if (!currentPdfBlob || !currentBoleta) return;
   const filename = `boleta_${currentBoleta.empleado_id}_${currentBoleta.periodo}.pdf`;
   downloadBlob(currentPdfBlob, filename);
   await markDownloaded(currentBoleta.id);
+  closeViewer();
   showStatus("status", "ok", "Boleta descargada correctamente.");
 }
 
@@ -321,6 +375,7 @@ async function init() {
     await loadPeriodos();
     document.getElementById("openBtn").addEventListener("click", openBoleta);
     document.getElementById("downloadBtn").addEventListener("click", downloadPdf);
+    document.getElementById("viewerClose").addEventListener("click", closeViewer);
 
     ["ci", "pin"].forEach(id => {
       document.getElementById(id).addEventListener("keydown", e => {
