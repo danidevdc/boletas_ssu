@@ -33,18 +33,18 @@
           <div class="form-row">
             <label for="periodo">Periodo</label>
             <select id="periodo"></select>
-            <p class="hint">También puede abrirse con link directo: <code>?periodo=2026-05</code></p>
+            <p class="hint">También puede abrirse con link directo.</p>
           </div>
 
           <div class="form-row">
             <label for="ci">CI</label>
-            <input id="ci" autocomplete="off" placeholder="Ej. 6770063" />
+            <input id="ci" autocomplete="off" placeholder="" />
           </div>
 
           <div class="form-row">
             <label for="pin">PIN</label>
-            <input id="pin" type="password" autocomplete="off" placeholder="Ej. K7M9Q2" />
-            <p class="hint">Clave usada internamente: CI-PIN. Ejemplo: 6770063-K7M9Q2</p>
+            <input id="pin" type="password" autocomplete="off" placeholder="" />
+            <p class="hint">Clave usada internamente: CI-PIN.</p>
           </div>
 
           <div class="notice">
@@ -97,7 +97,7 @@ let viewerTimer = null;
 let viewerInterval = null;
 
 function getPeriodoFromUrl() {
-  return qs("periodo") || getConfig().PERIODO_DEFAULT;
+  return qs("periodo") || "";
 }
 
 async function loadPeriodos() {

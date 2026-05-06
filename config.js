@@ -11,6 +11,5 @@ window.APP_CONFIG = {
   // Nombre visible de la institución en la página.
   INSTITUCION: "Portal RRHH",
 
-  // Periodo por defecto si el link no trae ?periodo=2026-05
-  PERIODO_DEFAULT: "2026-05"
+  // Periodo por defecto (opcional)
 };
