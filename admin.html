@@ -52,29 +52,6 @@
     <div id="adminContent" style="display:none">
       <section class="card">
         <div class="card-head">
-          <h2>Periodo de trabajo</h2>
-          <p>Ejemplo recomendado: 2026-05</p>
-        </div>
-        <div class="card-body">
-          <div class="grid-2">
-            <div class="form-row">
-              <label for="periodo">Periodo</label>
-              <input id="periodo" placeholder="2026-05" />
-            </div>
-            <div class="form-row">
-              <label for="nombrePeriodo">Nombre visible</label>
-              <input id="nombrePeriodo" placeholder="Mayo 2026" />
-            </div>
-          </div>
-          <div class="top-actions" style="margin-top:16px;">
-            <button id="deletePeriodoBtn" class="warn" type="button">Borrar periodo</button>
-          </div>
-          <div id="periodoStatus" class="status"></div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
           <h2>1. Subir archivos .enc</h2>
           <p>Seleccione archivos .enc o un ZIP generado por el programa Python</p>
         </div>
@@ -109,6 +86,33 @@
               <input id="periodLink" readonly />
               <button id="copyLinkBtn" class="secondary" type="button">Copiar</button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Periodo de trabajo</h2>
+          <p>Ejemplo recomendado: 2026-05</p>
+        </div>
+        <div class="card-body">
+          <div class="grid-2">
+            <div class="form-row">
+              <label for="periodo">Periodo</label>
+              <input id="periodo" placeholder="2026-05" />
+            </div>
+            <div class="form-row">
+              <label for="nombrePeriodo">Nombre visible</label>
+              <input id="nombrePeriodo" placeholder="Mayo 2026" />
+            </div>
+          </div>
+          <div class="top-actions" style="margin-top:16px;">
+            <button id="deletePeriodoBtn" class="warn" type="button">Borrar periodo</button>
+          </div>
+          <div id="periodoStatus" class="status"></div>
+          <div class="period-list">
+            <div class="period-list-label">PERIODOS CARGADOS</div>
+            <div id="periodListBody" class="period-list-body">—</div>
           </div>
         </div>
       </section>
@@ -184,6 +188,7 @@ function setDefaultPeriod() {
   document.getElementById("periodo").value = periodo;
   document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
   setText("institutionName", cfg.INSTITUCION || "Portal RRHH");
+  document.getElementById("periodCurrentValue").textContent = formatPeriodoLabel(periodo) || "—";
 }
 
 async function checkSession() {
@@ -208,6 +213,46 @@ function setPeriodoUi(periodo) {
   document.getElementById("periodo").value = periodo;
   document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
   document.getElementById("periodCurrentValue").textContent = formatPeriodoLabel(periodo);
+}
+
+async function loadPeriodosList() {
+  const cfg = getConfig();
+  const list = document.getElementById("periodListBody");
+  if (!list) return;
+
+  const { data, error } = await sb
+    .from(cfg.TABLE_PERIODOS)
+    .select("periodo,nombre,activo")
+    .order("periodo", { ascending: false });
+
+  if (error) {
+    list.textContent = "No se pudo cargar.";
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    list.textContent = "—";
+    return;
+  }
+
+  list.innerHTML = "";
+  data.forEach(row => {
+    const item = document.createElement("div");
+    item.className = "period-list-item";
+    const label = document.createElement("div");
+    label.className = "period-list-label";
+    label.textContent = row.periodo;
+    const name = document.createElement("div");
+    name.className = "period-list-name";
+    name.textContent = row.nombre || formatPeriodoLabel(row.periodo);
+    const state = document.createElement("div");
+    state.className = "period-list-state";
+    state.textContent = row.activo ? "ACTIVO" : "INACTIVO";
+    item.appendChild(label);
+    item.appendChild(name);
+    item.appendChild(state);
+    list.appendChild(item);
+  });
 }
 
 async function deletePeriodo() {
@@ -280,6 +325,7 @@ async function deletePeriodo() {
     removedAny ? "Periodo y archivos eliminados." : "Periodo eliminado."
   );
   refreshTracking();
+  loadPeriodosList();
 }
 
 function showLogin() {
@@ -502,6 +548,7 @@ async function processPeriodo() {
   const linkInput = document.getElementById("periodLink");
   linkInput.value = link;
   document.getElementById("periodLinkWrap").style.display = "block";
+  loadPeriodosList();
 }
 
 function renderTable(rows) {
@@ -604,6 +651,7 @@ async function init() {
     sb = createSbClient();
     initThemeToggle();
     setDefaultPeriod();
+    loadPeriodosList();
     document.getElementById("csvFile").addEventListener("change", () => {
       const file = document.getElementById("csvFile").files[0];
       if (!file) return;

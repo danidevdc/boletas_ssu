@@ -445,6 +445,48 @@ tr:last-child td { border-bottom: 0; }
   margin-top: var(--space-xs);
 }
 
+.period-list {
+  border: 1px solid var(--border-visible);
+  border-radius: 12px;
+  padding: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.period-list-label {
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.period-list-body {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.period-list-item {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.period-list-name {
+  color: var(--text-display);
+}
+
+.period-list-state {
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .stat {
   border: 1px solid var(--border-visible);
   border-radius: 12px;
