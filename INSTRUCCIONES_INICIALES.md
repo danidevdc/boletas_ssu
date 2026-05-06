@@ -17,8 +17,8 @@ FLUJO
 1. RRHH cifra PDFs con el programa Python.
 2. El programa genera:
    - archivos .enc
-   - supabase_boletas.csv
-   - mensajes_whatsapp.csv
+   - supabase_boletas-05-2026.csv (ci,nombre,periodo)
+   - boletas-05-2026.zip (bundle de .enc)
 3. En Supabase:
    - crear bucket "boletas"
    - ejecutar supabase_setup.sql
@@ -27,7 +27,7 @@ FLUJO
 5. En admin.html:
    - iniciar sesion
    - seleccionar periodo
-   - subir archivos .enc
+   - subir archivos .enc (o el ZIP)
    - importar supabase_boletas.csv
 6. En index.html:
    - empleado elige periodo
@@ -84,15 +84,13 @@ El usuario tambien puede cambiar periodo desde el selector si existen periodos a
 
 RUTAS DE ARCHIVOS
 -----------------
-Si el programa Python genera:
-archivo_path = 2026-05/6770063.enc
+La carpeta de PDFs debe llamarse YYYY-MM (por ejemplo: 2026-05).
 
-Entonces en Supabase Storage debe existir:
-bucket boletas / 2026-05 / 6770063.enc
+El programa genera los .enc con nombre CI.enc y el CSV con:
+ci,nombre,periodo
 
-En admin.html, si el periodo es 2026-05 y subes 6770063.enc,
-se subira automaticamente como:
-2026-05/6770063.enc
+En admin.html, el archivo_path se calcula como:
+periodo/ci.enc
 
 GITHUB PAGES
 ------------

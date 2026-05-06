@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="config.js"></script>
   <script src="shared.js"></script>
 </head>
@@ -73,14 +74,14 @@
       <section class="card">
         <div class="card-head">
           <h2>1. Subir archivos .enc</h2>
-          <p>Seleccione los archivos cifrados generados por el programa Python</p>
+          <p>Seleccione archivos .enc o un ZIP generado por el programa Python</p>
         </div>
         <div class="card-body">
           <div class="notice">
             Si su CSV dice archivo_path = <strong>2026-05/6770063.enc</strong>, los archivos deben subirse a esa misma ruta.
             Esta pantalla subirá los archivos al periodo indicado: <strong>periodo/nombre_archivo.enc</strong>.
           </div>
-          <input id="encFiles" type="file" multiple accept=".enc" />
+          <input id="encFiles" type="file" multiple accept=".enc,.zip" />
           <br /><br />
           <button id="uploadEncBtn">Subir archivos .enc</button>
           <div id="uploadStatus" class="status"></div>
@@ -90,7 +91,7 @@
       <section class="card">
         <div class="card-head">
           <h2>2. Importar CSV de boletas</h2>
-          <p>Use el archivo supabase_boletas.csv generado por Python</p>
+          <p>Use el archivo supabase_boletas-05-2026.csv (ci,nombre,periodo)</p>
         </div>
         <div class="card-body">
           <input id="csvFile" type="file" accept=".csv,text/csv" />
@@ -219,6 +220,14 @@ async function logout() {
   showLogin();
 }
 
+function parsePeriodoFromCsvName(filename) {
+  const match = filename.match(/supabase_boletas-(\d{2})-(\d{4})\.csv$/i);
+  if (!match) return "";
+  const month = match[1];
+  const year = match[2];
+  return `${year}-${month}`;
+}
+
 async function savePeriodo() {
   const cfg = getConfig();
   const periodo = document.getElementById("periodo").value.trim();
@@ -259,23 +268,49 @@ async function uploadEncFiles() {
   let fail = 0;
   const errors = [];
 
-  showStatus("uploadStatus", "info", "Subiendo archivos...");
+  const onlyZip = files.length === 1 && files[0].name.toLowerCase().endsWith(".zip");
+  showStatus("uploadStatus", "info", onlyZip ? "Leyendo ZIP..." : "Subiendo archivos...");
 
-  for (const file of files) {
-    const path = `${periodo}/${file.name}`;
-    const { error } = await sb.storage
-      .from(cfg.BUCKET_NAME)
-      .upload(path, file, {
-        cacheControl: "3600",
-        upsert: true,
-        contentType: "application/octet-stream"
-      });
+  if (onlyZip) {
+    const zip = await JSZip.loadAsync(files[0]);
+    const entries = Object.values(zip.files).filter(entry => !entry.dir && entry.name.toLowerCase().endsWith(".enc"));
 
-    if (error) {
-      fail++;
-      errors.push(`${file.name}: ${error.message}`);
-    } else {
-      ok++;
+    for (const entry of entries) {
+      const data = await entry.async("uint8array");
+      const fileName = entry.name.split("/").pop();
+      const path = `${periodo}/${fileName}`;
+      const { error } = await sb.storage
+        .from(cfg.BUCKET_NAME)
+        .upload(path, new Blob([data], { type: "application/octet-stream" }), {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: "application/octet-stream"
+        });
+
+      if (error) {
+        fail++;
+        errors.push(`${fileName}: ${error.message}`);
+      } else {
+        ok++;
+      }
+    }
+  } else {
+    for (const file of files) {
+      const path = `${periodo}/${file.name}`;
+      const { error } = await sb.storage
+        .from(cfg.BUCKET_NAME)
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: "application/octet-stream"
+        });
+
+      if (error) {
+        fail++;
+        errors.push(`${file.name}: ${error.message}`);
+      } else {
+        ok++;
+      }
     }
   }
 
@@ -296,15 +331,17 @@ async function importCsv() {
   const text = await file.text();
   const rows = parseCsv(text);
 
-  const required = ["empleado_id", "nombre", "periodo", "archivo_path"];
+  const required = ["ci", "nombre", "periodo"];
   const cleanRows = [];
 
   for (const r of rows) {
+    const ci = (r.ci || "").trim();
+    const periodo = (r.periodo || "").trim();
     const item = {
-      empleado_id: (r.empleado_id || "").trim(),
+      empleado_id: ci,
       nombre: (r.nombre || "").trim(),
-      periodo: (r.periodo || "").trim(),
-      archivo_path: (r.archivo_path || "").trim(),
+      periodo,
+      archivo_path: ci && periodo ? `${periodo}/${ci}.enc` : "",
       fecha_expiracion: (r.fecha_expiracion || "").trim() || null
     };
 
@@ -439,6 +476,14 @@ async function init() {
     sb = createSbClient();
     initThemeToggle();
     setDefaultPeriod();
+    document.getElementById("csvFile").addEventListener("change", () => {
+      const file = document.getElementById("csvFile").files[0];
+      if (!file) return;
+      const periodo = parsePeriodoFromCsvName(file.name);
+      if (!periodo) return;
+      document.getElementById("periodo").value = periodo;
+      document.getElementById("nombrePeriodo").value = periodo;
+    });
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
     document.getElementById("savePeriodoBtn").addEventListener("click", savePeriodo);
