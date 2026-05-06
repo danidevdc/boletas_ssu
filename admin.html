@@ -23,7 +23,7 @@
       </div>
       <div class="top-actions">
         <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
-        <a class="btn secondary" href="index.html">Vista empleado</a>
+        <a id="viewEmployeeLink" class="btn secondary" href="index.html">Vista empleado</a>
         <button id="logoutBtn" class="secondary" style="display:none">Cerrar sesión</button>
       </div>
     </div>
@@ -383,6 +383,11 @@ async function logout() {
   showLogin();
 }
 
+async function logoutAndRedirect(href) {
+  await sb.auth.signOut();
+  window.location.href = href;
+}
+
 function startSessionTimer() {
   resetSessionTimer();
 }
@@ -711,6 +716,10 @@ async function init() {
     });
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("viewEmployeeLink").addEventListener("click", async (e) => {
+      e.preventDefault();
+      await logoutAndRedirect(e.currentTarget.href);
+    });
     document.getElementById("processBtn").addEventListener("click", processPeriodo);
     document.getElementById("copyLinkBtn").addEventListener("click", () => {
       const linkInput = document.getElementById("periodLink");
@@ -731,6 +740,10 @@ async function init() {
     document.getElementById("periodo").addEventListener("change", () => {
       setPeriodoUi(document.getElementById("periodo").value.trim());
       refreshTracking();
+    });
+
+    window.addEventListener("beforeunload", () => {
+      sb.auth.signOut();
     });
 
     await checkSession();
