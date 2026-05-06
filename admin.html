@@ -131,6 +131,41 @@ function applyTheme(theme) {
 function initThemeToggle() {
   const stored = localStorage.getItem("theme");
   const initial = stored === "dark" ? "dark" : "light";
+  applyTheme(initial);
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+  });
+}
+
+async function loadPeriodosList() {
+  const cfg = getConfig();
+  const list = document.getElementById("periodListBody");
+  if (!list) return;
+
+  const { data, error } = await sb
+    .from(cfg.TABLE_PERIODOS)
+    .select("periodo,nombre,activo")
+    .order("periodo", { ascending: false });
+
+  if (error) {
+    list.textContent = "No se pudo cargar.";
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    list.textContent = "-";
+    if (!document.getElementById("periodo").value.trim()) {
+      setPeriodoUi("");
+    }
+    return;
+  }
+
+  list.innerHTML = "";
+  data.forEach(row => {
+    const item = document.createElement("div");
+    item.className = "period-list-item";
+    const label = document.createElement("div");
     label.className = "period-list-label";
     label.textContent = row.periodo;
     const name = document.createElement("div");
@@ -225,7 +260,6 @@ async function deletePeriodo(periodo) {
     removedAny ? "Periodo y archivos eliminados." : "Periodo eliminado."
   );
   setPeriodoUi("");
-  refreshTracking();
   loadPeriodosList();
 }
 
