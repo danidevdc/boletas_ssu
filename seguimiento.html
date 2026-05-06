@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Seguimiento RRHH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="header">
+      <div>
+        <small id="institutionName">Portal RRHH</small>
+        <h1>Seguimiento de boletas</h1>
+        <p class="hint">Vista solo para administracion. Seleccione un periodo para revisar aperturas y descargas.</p>
+      </div>
+      <div class="top-actions">
+        <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
+        <a class="btn secondary" href="admin.html">Volver al admin</a>
+        <button id="logoutBtn" class="secondary" style="display:none">Cerrar sesion</button>
+      </div>
+    </div>
+
+    <section id="loginCard" class="card">
+      <div class="card-head">
+        <h2>Ingreso RRHH</h2>
+        <p>Usa un usuario creado en Supabase Auth</p>
+      </div>
+      <div class="card-body">
+        <div class="grid-2">
+          <div class="form-row">
+            <label for="email">Correo</label>
+            <input id="email" type="email" placeholder="rrhh@empresa.com" />
+          </div>
+          <div class="form-row">
+            <label for="password">Contrasena</label>
+            <input id="password" type="password" placeholder="••••••••" />
+          </div>
+        </div>
+        <button id="loginBtn">Ingresar</button>
+        <div id="loginStatus" class="status"></div>
+      </div>
+    </section>
+
+    <div id="trackingContent" style="display:none">
+      <section class="card">
+        <div class="card-head">
+          <h2>Periodo</h2>
+          <p>Elija el periodo a revisar</p>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <label for="periodo">Periodo</label>
+            <select id="periodo"></select>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Seguimiento del periodo</h2>
+          <p>Resumen de apertura y descarga</p>
+        </div>
+        <div class="card-body">
+          <div class="top-actions">
+            <button id="refreshBtn">Actualizar seguimiento</button>
+            <button id="exportBtn" class="secondary">Exportar seguimiento CSV</button>
+          </div>
+
+          <br />
+          <div class="grid-4">
+            <div class="stat"><span>Total</span><strong id="statTotal">0</strong></div>
+            <div class="stat"><span>Abiertas</span><strong id="statOpened">0</strong></div>
+            <div class="stat"><span>Descargadas</span><strong id="statDownloaded">0</strong></div>
+            <div class="stat"><span>Pendientes</span><strong id="statPending">0</strong></div>
+          </div>
+
+          <br />
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>CI</th>
+                  <th>Nombre</th>
+                  <th>Periodo</th>
+                  <th>Archivo</th>
+                  <th>Estado</th>
+                  <th>Abierto</th>
+                  <th>Descargado</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr><td colspan="7">Sin datos.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="trackStatus" class="status"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+<script>
+let sb;
+let loadedRows = [];
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+let sessionTimer = null;
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("theme", theme);
+  const btn = document.getElementById("themeToggle");
+  if (btn) btn.textContent = theme === "dark" ? "MODO CLARO" : "MODO OSCURO";
+}
+
+function initThemeToggle() {
+  const stored = localStorage.getItem("theme");
+  const initial = stored === "dark" ? "dark" : "light";
+  applyTheme(initial);
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+  });
+}
+
+function getPeriodoFromUrl() {
+  return qs("periodo") || "";
+}
+
+async function loadPeriodos() {
+  const cfg = getConfig();
+  const periodoSelect = document.getElementById("periodo");
+  const urlPeriodo = getPeriodoFromUrl();
+
+  const { data, error } = await sb
+    .from(cfg.TABLE_PERIODOS)
+    .select("periodo,nombre,activo")
+    .eq("activo", true)
+    .order("periodo", { ascending: false });
+
+  if (error) {
+    showStatus("trackStatus", "error", error.message);
+    return;
+  }
+
+  periodoSelect.innerHTML = "";
+  const periodos = data && data.length ? data : [];
+
+  periodos.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.periodo;
+    opt.textContent = p.nombre || formatPeriodoLabel(p.periodo);
+    periodoSelect.appendChild(opt);
+  });
+
+  if ([...periodoSelect.options].some(o => o.value === urlPeriodo)) {
+    periodoSelect.value = urlPeriodo;
+  } else if (periodoSelect.options.length > 0) {
+    periodoSelect.selectedIndex = 0;
+    if (urlPeriodo) {
+      showStatus("trackStatus", "error", "El periodo del link no esta disponible.");
+    }
+  } else {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "-";
+    opt.disabled = true;
+    opt.selected = true;
+    periodoSelect.appendChild(opt);
+    showStatus("trackStatus", "info", "No hay periodos activos.");
+  }
+}
+
+async function checkSession() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    showTracking();
+  } else {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  document.getElementById("loginCard").style.display = "block";
+  document.getElementById("trackingContent").style.display = "none";
+  document.getElementById("logoutBtn").style.display = "none";
+  stopSessionTimer();
+}
+
+function showTracking() {
+  document.getElementById("loginCard").style.display = "none";
+  document.getElementById("trackingContent").style.display = "block";
+  document.getElementById("logoutBtn").style.display = "inline-flex";
+  refreshTracking();
+  startSessionTimer();
+}
+
+async function login() {
+  hideStatus("loginStatus");
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!email || !password) {
+    showStatus("loginStatus", "error", "Ingrese correo y contrasena.");
+    return;
+  }
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    showStatus("loginStatus", "error", "No se pudo ingresar: " + error.message);
+    return;
+  }
+
+  showTracking();
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  showLogin();
+}
+
+function startSessionTimer() {
+  resetSessionTimer();
+}
+
+function stopSessionTimer() {
+  if (sessionTimer) {
+    clearTimeout(sessionTimer);
+    sessionTimer = null;
+  }
+}
+
+function resetSessionTimer() {
+  stopSessionTimer();
+  sessionTimer = setTimeout(async () => {
+    await sb.auth.signOut();
+    showStatus("loginStatus", "info", "Sesion expirada por inactividad.");
+    showLogin();
+  }, SESSION_TIMEOUT_MS);
+}
+
+async function refreshTracking() {
+  const cfg = getConfig();
+  const periodo = document.getElementById("periodo").value.trim();
+  if (!periodo) return;
+
+  const { data, error } = await sb
+    .from(cfg.TABLE_BOLETAS)
+    .select("id,empleado_id,nombre,periodo,archivo_path,abierto_en,descargado_en,fecha_expiracion,created_at")
+    .eq("periodo", periodo)
+    .order("nombre", { ascending: true });
+
+  if (error) {
+    showStatus("trackStatus", "error", error.message);
+    return;
+  }
+
+  loadedRows = data || [];
+  const total = loadedRows.length;
+  const opened = loadedRows.filter(r => r.abierto_en).length;
+  const downloaded = loadedRows.filter(r => r.descargado_en).length;
+  const pending = total - opened;
+
+  setText("statTotal", total);
+  setText("statOpened", opened);
+  setText("statDownloaded", downloaded);
+  setText("statPending", pending);
+
+  renderTable(loadedRows);
+  hideStatus("trackStatus");
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7">Sin datos para este periodo.</td></tr>`;
+    return;
+  }
+
+  for (const r of rows) {
+    const state = r.descargado_en ? "Descargado" : r.abierto_en ? "Abierto" : "Pendiente";
+    const badgeClass = r.descargado_en ? "ok" : r.abierto_en ? "info" : "pending";
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(r.empleado_id)}</td>
+      <td>${escapeHtml(r.nombre || "")}</td>
+      <td>${escapeHtml(r.periodo)}</td>
+      <td>${escapeHtml(r.archivo_path)}</td>
+      <td><span class="badge ${badgeClass}">${state}</span></td>
+      <td>${r.abierto_en ? new Date(r.abierto_en).toLocaleString() : "—"}</td>
+      <td>${r.descargado_en ? new Date(r.descargado_en).toLocaleString() : "—"}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function exportTracking() {
+  if (!loadedRows.length) {
+    showStatus("trackStatus", "error", "No hay datos para exportar.");
+    return;
+  }
+
+  const headers = ["empleado_id", "nombre", "periodo", "archivo_path", "estado", "abierto_en", "descargado_en"];
+  const lines = [headers.join(",")];
+
+  for (const r of loadedRows) {
+    const estado = r.descargado_en ? "Descargado" : r.abierto_en ? "Abierto" : "Pendiente";
+    const values = [
+      r.empleado_id,
+      r.nombre || "",
+      r.periodo,
+      r.archivo_path,
+      estado,
+      r.abierto_en || "",
+      r.descargado_en || ""
+    ].map(v => `"${String(v).replaceAll('"', '""')}"`);
+    lines.push(values.join(","));
+  }
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const periodo = document.getElementById("periodo").value.trim();
+  downloadBlob(blob, `seguimiento_${periodo}.csv`);
+}
+
+async function init() {
+  try {
+    sb = createSbClient();
+    initThemeToggle();
+    await loadPeriodos();
+    await checkSession();
+
+    ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach(evt => {
+      window.addEventListener(evt, () => {
+        if (document.getElementById("trackingContent").style.display !== "none") {
+          resetSessionTimer();
+        }
+      }, { passive: true });
+    });
+
+    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("refreshBtn").addEventListener("click", refreshTracking);
+    document.getElementById("exportBtn").addEventListener("click", exportTracking);
+    document.getElementById("periodo").addEventListener("change", refreshTracking);
+  } catch (err) {
+    showStatus("loginStatus", "error", err.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

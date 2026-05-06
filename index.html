@@ -372,6 +372,8 @@ function closeViewer() {
   document.getElementById("downloadBtn").style.display = "none";
   currentPdfBlob = null;
   currentBoleta = null;
+  document.getElementById("ci").value = "";
+  document.getElementById("pin").value = "";
 }
 
 async function downloadPdf() {
