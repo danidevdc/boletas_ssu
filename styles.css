@@ -140,9 +140,14 @@ p {
 
 .grid {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-xl);
   align-items: start;
+}
+
+.employee-card {
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 .grid-2 {
@@ -278,6 +283,8 @@ button:disabled {
 
 .viewer {
   min-height: 620px;
+  max-width: 980px;
+  margin: 0 auto;
 }
 
 .viewer.is-hidden {

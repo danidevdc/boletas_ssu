@@ -24,16 +24,12 @@
     </div>
 
     <div class="grid">
-      <section class="card">
+      <section class="card employee-card">
         <div class="card-head">
           <h2>Acceso del empleado</h2>
           <p>Un solo portal por periodo</p>
         </div>
         <div class="card-body">
-          <div class="notice">
-            Su PIN es personal. No lo comparta. La clave no se envía al servidor; se usa localmente para abrir el archivo cifrado.
-          </div>
-
           <div class="form-row">
             <label for="periodo">Periodo</label>
             <select id="periodo"></select>
@@ -49,6 +45,10 @@
             <label for="pin">PIN</label>
             <input id="pin" type="password" autocomplete="off" placeholder="Ej. K7M9Q2" />
             <p class="hint">Clave usada internamente: CI-PIN. Ejemplo: 6770063-K7M9Q2</p>
+          </div>
+
+          <div class="notice">
+            Su PIN es personal. No lo comparta. La clave no se envía al servidor; se usa localmente para abrir el archivo cifrado.
           </div>
 
           <button id="openBtn" class="full">Ver mi boleta</button>
