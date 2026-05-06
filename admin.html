@@ -63,8 +63,11 @@
             </div>
             <div class="form-row">
               <label for="nombrePeriodo">Nombre visible</label>
-              <input id="nombrePeriodo" placeholder="Mayo 2026" readonly />
+              <input id="nombrePeriodo" placeholder="Mayo 2026" />
             </div>
+          </div>
+          <div class="top-actions" style="margin-top:16px;">
+            <button id="deletePeriodoBtn" class="warn" type="button">Borrar periodo</button>
           </div>
           <div id="periodoStatus" class="status"></div>
         </div>
@@ -91,6 +94,10 @@
           <p>Use el archivo supabase_boletas-05-2026.csv (ci,nombre,periodo)</p>
         </div>
         <div class="card-body">
+          <div class="period-current">
+            <div class="period-current-label">PERIODO ACTUAL</div>
+            <div id="periodCurrentValue" class="period-current-value">—</div>
+          </div>
           <input id="csvFile" type="file" accept=".csv,text/csv" />
           <div id="csvStatus" class="status"></div>
           <div class="form-row" style="margin-top:16px;">
@@ -200,6 +207,79 @@ function setPeriodoUi(periodo) {
   if (!periodo) return;
   document.getElementById("periodo").value = periodo;
   document.getElementById("nombrePeriodo").value = formatPeriodoLabel(periodo);
+  document.getElementById("periodCurrentValue").textContent = formatPeriodoLabel(periodo);
+}
+
+async function deletePeriodo() {
+  const cfg = getConfig();
+  const periodo = document.getElementById("periodo").value.trim();
+  if (!periodo) {
+    showStatus("periodoStatus", "error", "Ingrese un periodo para borrar.");
+    return;
+  }
+
+  const ok = confirm(`Se borrara el periodo ${periodo} y sus archivos. Desea continuar?`);
+  if (!ok) return;
+
+  showStatus("periodoStatus", "info", "Borrando archivos y registros...");
+
+  const limit = 100;
+  let offset = 0;
+  let removedAny = false;
+
+  while (true) {
+    const { data, error } = await sb.storage
+      .from(cfg.BUCKET_NAME)
+      .list(periodo, { limit, offset });
+
+    if (error) {
+      showStatus("periodoStatus", "error", error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) break;
+
+    const paths = data.map(item => `${periodo}/${item.name}`);
+    const { error: removeError } = await sb.storage
+      .from(cfg.BUCKET_NAME)
+      .remove(paths);
+
+    if (removeError) {
+      showStatus("periodoStatus", "error", removeError.message);
+      return;
+    }
+
+    removedAny = true;
+    offset += data.length;
+    if (data.length < limit) break;
+  }
+
+  const { error: deleteBoletasError } = await sb
+    .from(cfg.TABLE_BOLETAS)
+    .delete()
+    .eq("periodo", periodo);
+
+  if (deleteBoletasError) {
+    showStatus("periodoStatus", "error", deleteBoletasError.message);
+    return;
+  }
+
+  const { error: deletePeriodosError } = await sb
+    .from(cfg.TABLE_PERIODOS)
+    .delete()
+    .eq("periodo", periodo);
+
+  if (deletePeriodosError) {
+    showStatus("periodoStatus", "error", deletePeriodosError.message);
+    return;
+  }
+
+  showStatus(
+    "periodoStatus",
+    "ok",
+    removedAny ? "Periodo y archivos eliminados." : "Periodo eliminado."
+  );
+  refreshTracking();
 }
 
 function showLogin() {
@@ -533,6 +613,7 @@ async function init() {
     });
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("deletePeriodoBtn").addEventListener("click", deletePeriodo);
     document.getElementById("processBtn").addEventListener("click", processPeriodo);
     document.getElementById("copyLinkBtn").addEventListener("click", () => {
       const link = document.getElementById("periodLink").value;

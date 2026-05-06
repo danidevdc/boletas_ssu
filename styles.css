@@ -423,6 +423,28 @@ tr:last-child td { border-bottom: 0; }
   gap: var(--space-sm);
 }
 
+.period-current {
+  border: 1px solid var(--border-visible);
+  border-radius: 12px;
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.period-current-label {
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.period-current-value {
+  font-family: var(--font-body);
+  font-size: var(--body);
+  color: var(--text-display);
+  margin-top: var(--space-xs);
+}
+
 .stat {
   border: 1px solid var(--border-visible);
   border-radius: 12px;
