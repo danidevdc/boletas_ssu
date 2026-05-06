@@ -468,7 +468,7 @@ tr:last-child td { border-bottom: 0; }
 
 .period-list-item {
   display: grid;
-  grid-template-columns: 120px 1fr auto;
+  grid-template-columns: 120px 1fr auto auto;
   gap: var(--space-sm);
   padding: var(--space-sm);
   border: 1px solid var(--border);
@@ -485,6 +485,15 @@ tr:last-child td { border-bottom: 0; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-secondary);
+}
+
+.period-list-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.period-list-delete {
+  padding: 8px 14px;
 }
 
 .stat {

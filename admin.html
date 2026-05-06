@@ -106,9 +106,6 @@
               <input id="nombrePeriodo" placeholder="Mayo 2026" />
             </div>
           </div>
-          <div class="top-actions" style="margin-top:16px;">
-            <button id="deletePeriodoBtn" class="warn" type="button">Borrar periodo</button>
-          </div>
           <div id="periodoStatus" class="status"></div>
           <div class="period-list">
             <div class="period-list-label">PERIODOS CARGADOS</div>
@@ -259,22 +256,31 @@ async function loadPeriodosList() {
     const state = document.createElement("div");
     state.className = "period-list-state";
     state.textContent = row.activo ? "ACTIVO" : "INACTIVO";
+    const actions = document.createElement("div");
+    actions.className = "period-list-actions";
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "warn period-list-delete";
+    delBtn.textContent = "Borrar";
+    delBtn.addEventListener("click", () => deletePeriodo(row.periodo));
+    actions.appendChild(delBtn);
     item.appendChild(label);
     item.appendChild(name);
     item.appendChild(state);
+    item.appendChild(actions);
     list.appendChild(item);
   });
 }
 
-async function deletePeriodo() {
+async function deletePeriodo(periodo) {
   const cfg = getConfig();
-  const periodo = document.getElementById("periodo").value.trim();
-  if (!periodo) {
-    showStatus("periodoStatus", "error", "Ingrese un periodo para borrar.");
+  const target = String(periodo || "").trim();
+  if (!target) {
+    showStatus("periodoStatus", "error", "Seleccione un periodo para borrar.");
     return;
   }
 
-  const ok = confirm(`Se borrara el periodo ${periodo} y sus archivos. Desea continuar?`);
+  const ok = confirm(`Se borrara el periodo ${target} y sus archivos. Desea continuar?`);
   if (!ok) return;
 
   showStatus("periodoStatus", "info", "Borrando archivos y registros...");
@@ -286,7 +292,7 @@ async function deletePeriodo() {
   while (true) {
     const { data, error } = await sb.storage
       .from(cfg.BUCKET_NAME)
-      .list(periodo, { limit, offset });
+      .list(target, { limit, offset });
 
     if (error) {
       showStatus("periodoStatus", "error", error.message);
@@ -295,7 +301,7 @@ async function deletePeriodo() {
 
     if (!data || data.length === 0) break;
 
-    const paths = data.map(item => `${periodo}/${item.name}`);
+    const paths = data.map(item => `${target}/${item.name}`);
     const { error: removeError } = await sb.storage
       .from(cfg.BUCKET_NAME)
       .remove(paths);
@@ -313,7 +319,7 @@ async function deletePeriodo() {
   const { error: deleteBoletasError } = await sb
     .from(cfg.TABLE_BOLETAS)
     .delete()
-    .eq("periodo", periodo);
+    .eq("periodo", target);
 
   if (deleteBoletasError) {
     showStatus("periodoStatus", "error", deleteBoletasError.message);
@@ -323,7 +329,7 @@ async function deletePeriodo() {
   const { error: deletePeriodosError } = await sb
     .from(cfg.TABLE_PERIODOS)
     .delete()
-    .eq("periodo", periodo);
+    .eq("periodo", target);
 
   if (deletePeriodosError) {
     showStatus("periodoStatus", "error", deletePeriodosError.message);
@@ -335,6 +341,7 @@ async function deletePeriodo() {
     "ok",
     removedAny ? "Periodo y archivos eliminados." : "Periodo eliminado."
   );
+  setPeriodoUi("");
   refreshTracking();
   loadPeriodosList();
 }
@@ -706,7 +713,6 @@ async function init() {
     });
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("logoutBtn").addEventListener("click", logout);
-    document.getElementById("deletePeriodoBtn").addEventListener("click", deletePeriodo);
     document.getElementById("processBtn").addEventListener("click", processPeriodo);
     document.getElementById("copyLinkBtn").addEventListener("click", () => {
       const linkInput = document.getElementById("periodLink");
