@@ -303,6 +303,19 @@ async function logout() {
   showLogin();
 }
 
+async function checkSession() {
+  const { data, error } = await sb.auth.getSession();
+  if (error) {
+    showLogin();
+    return;
+  }
+  if (data && data.session) {
+    showAdmin();
+  } else {
+    showLogin();
+  }
+}
+
 async function logoutAndRedirect(href) {
   await sb.auth.signOut();
   window.location.href = href;
