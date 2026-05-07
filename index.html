@@ -21,7 +21,15 @@
         <h1>Consulta de boleta de pago</h1>
         <p class="hint">Ingrese su CI, PIN y periodo. El archivo se descifra en este navegador.</p>
       </div>
-      <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
+      <button id="themeToggle" class="secondary theme-toggle" type="button" aria-label="Cambiar tema">
+        <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"></path>
+        </svg>
+      </button>
     </div>
 
     <div class="grid">
@@ -92,6 +100,8 @@
     </div>
   </div>
 
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
 <script>
 const MAGIC_TEXT = "RRHHENC1";
 const SALT_LEN = 16;
@@ -108,6 +118,7 @@ let pdfPage = 1;
 let pdfRenderTask = null;
 let viewerTimer = null;
 let viewerInterval = null;
+let toastTimer = null;
 
 function getPeriodoFromUrl() {
   return qs("periodo") || "";
@@ -336,6 +347,17 @@ function formatCountdown(ms) {
   return `${minutes}:${seconds}`;
 }
 
+function showToast(message) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.classList.remove("show");
+  }, 2400);
+}
+
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent || "");
 }
@@ -464,7 +486,8 @@ async function downloadPdf() {
   downloadBlob(currentPdfBlob, filename);
   await markDownloaded(currentBoleta.id);
   closeViewer();
-  showStatus("status", "ok", "Boleta descargada correctamente.");
+  hideStatus("status");
+  showToast("Boleta descargada correctamente.");
 }
 
 async function init() {
