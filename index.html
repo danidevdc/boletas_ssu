@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="config.js"></script>
   <script src="shared.js"></script>
 </head>
@@ -79,6 +80,14 @@
           <button id="viewerClose" class="secondary" type="button">Cerrar</button>
         </div>
       </div>
+      <div id="viewerMobilePane" class="viewer-mobile-pane is-hidden">
+        <div class="viewer-mobile-actions">
+          <button id="viewerPrev" class="secondary" type="button">Anterior</button>
+          <div id="viewerPageInfo" class="viewer-page-info">1 / 1</div>
+          <button id="viewerNext" class="secondary" type="button">Siguiente</button>
+        </div>
+        <canvas id="viewerCanvas"></canvas>
+      </div>
       <iframe id="viewerFrame" title="Boleta PDF"></iframe>
     </div>
   </div>
@@ -93,6 +102,10 @@ const VIEWER_TIMEOUT_MS = 2 * 60 * 1000;
 let sb;
 let currentPdfBlob = null;
 let currentBoleta = null;
+let currentPdfBuffer = null;
+let pdfDoc = null;
+let pdfPage = 1;
+let pdfRenderTask = null;
 let viewerTimer = null;
 let viewerInterval = null;
 
@@ -284,9 +297,10 @@ async function openBoleta() {
 
     currentPdfBlob = new Blob([pdfBuffer], { type: "application/pdf" });
     currentBoleta = boleta;
+    currentPdfBuffer = pdfBuffer;
 
     const pdfUrl = URL.createObjectURL(currentPdfBlob);
-    openViewer(pdfUrl, `${boleta.nombre || "Empleado"} · ${formatPeriodoLabel(periodo)}`);
+    openViewer(pdfUrl, `${boleta.nombre || "Empleado"} · ${formatPeriodoLabel(periodo)}`, pdfBuffer);
     document.getElementById("downloadBtn").style.display = "inline-flex";
     showStatus("status", "ok", "Boleta abierta correctamente.");
 
@@ -322,11 +336,70 @@ function formatCountdown(ms) {
   return `${minutes}:${seconds}`;
 }
 
-function openViewer(pdfUrl, subtitle) {
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent || "");
+}
+
+function setMobilePaneVisible(visible) {
+  const pane = document.getElementById("viewerMobilePane");
+  if (!pane) return;
+  pane.classList.toggle("is-hidden", !visible);
+}
+
+async function loadMobilePdf(buffer) {
+  if (!buffer || !window.pdfjsLib) return;
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  if (pdfRenderTask && pdfRenderTask.cancel) {
+    pdfRenderTask.cancel();
+  }
+  pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
+  pdfPage = 1;
+  await renderMobilePage(pdfPage);
+}
+
+function getMobileScale(page) {
+  const pane = document.getElementById("viewerMobilePane");
+  const baseViewport = page.getViewport({ scale: 1 });
+  const maxWidth = pane ? pane.clientWidth - 8 : window.innerWidth - 32;
+  const scale = maxWidth / baseViewport.width;
+  return Math.min(Math.max(scale, 0.5), 2);
+}
+
+async function renderMobilePage(pageNum) {
+  if (!pdfDoc) return;
+  const page = await pdfDoc.getPage(pageNum);
+  const scale = getMobileScale(page);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.getElementById("viewerCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  if (pdfRenderTask && pdfRenderTask.cancel) {
+    pdfRenderTask.cancel();
+  }
+
+  pdfRenderTask = page.render({ canvasContext: ctx, viewport });
+  await pdfRenderTask.promise;
+  const info = document.getElementById("viewerPageInfo");
+  if (info) info.textContent = `${pageNum} / ${pdfDoc.numPages}`;
+  const prevBtn = document.getElementById("viewerPrev");
+  const nextBtn = document.getElementById("viewerNext");
+  if (prevBtn) prevBtn.disabled = pageNum <= 1;
+  if (nextBtn) nextBtn.disabled = pageNum >= pdfDoc.numPages;
+}
+
+function openViewer(pdfUrl, subtitle, pdfBuffer) {
   const overlay = document.getElementById("viewerOverlay");
   const frame = document.getElementById("viewerFrame");
   const countdown = document.getElementById("viewerCountdown");
-  frame.src = pdfUrl;
+  const isMobile = isMobileDevice();
+  setMobilePaneVisible(isMobile);
+  if (frame) frame.style.display = isMobile ? "none" : "block";
+  if (frame) frame.src = isMobile ? "" : pdfUrl;
+  if (isMobile) loadMobilePdf(pdfBuffer);
   setText("viewerSubtitle", subtitle);
   overlay.classList.remove("is-hidden");
   overlay.setAttribute("aria-hidden", "false");
@@ -361,8 +434,13 @@ function closeViewer() {
   overlay.setAttribute("aria-hidden", "true");
   document.body.classList.remove("viewer-open");
 
+  setMobilePaneVisible(false);
+
   const frame = document.getElementById("viewerFrame");
-  if (frame) frame.src = "";
+  if (frame) {
+    frame.src = "";
+    frame.style.display = "block";
+  }
 
   clearTimeout(viewerTimer);
   clearInterval(viewerInterval);
@@ -372,6 +450,10 @@ function closeViewer() {
   document.getElementById("downloadBtn").style.display = "none";
   currentPdfBlob = null;
   currentBoleta = null;
+  currentPdfBuffer = null;
+  pdfDoc = null;
+  pdfPage = 1;
+  pdfRenderTask = null;
   document.getElementById("ci").value = "";
   document.getElementById("pin").value = "";
 }
@@ -393,6 +475,21 @@ async function init() {
     document.getElementById("openBtn").addEventListener("click", openBoleta);
     document.getElementById("downloadBtn").addEventListener("click", downloadPdf);
     document.getElementById("viewerClose").addEventListener("click", closeViewer);
+    document.getElementById("viewerPrev").addEventListener("click", async () => {
+      if (!pdfDoc || pdfPage <= 1) return;
+      pdfPage -= 1;
+      await renderMobilePage(pdfPage);
+    });
+    document.getElementById("viewerNext").addEventListener("click", async () => {
+      if (!pdfDoc || pdfPage >= pdfDoc.numPages) return;
+      pdfPage += 1;
+      await renderMobilePage(pdfPage);
+    });
+    window.addEventListener("resize", () => {
+      if (isMobileDevice() && pdfDoc) {
+        renderMobilePage(pdfPage);
+      }
+    });
 
     ["ci", "pin"].forEach(id => {
       document.getElementById(id).addEventListener("keydown", e => {

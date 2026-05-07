@@ -23,7 +23,6 @@
       </div>
       <div class="top-actions">
         <button id="themeToggle" class="secondary theme-toggle" type="button">MODO OSCURO</button>
-        <a class="btn secondary" href="seguimiento.html">Seguimiento</a>
         <a id="viewEmployeeLink" class="btn secondary" href="index.html">Vista empleado</a>
         <button id="logoutBtn" class="secondary" style="display:none">Cerrar sesión</button>
       </div>
@@ -51,6 +50,9 @@
     </section>
 
     <div id="adminContent" style="display:none">
+      <div class="top-actions" style="margin-bottom:16px;">
+        <a class="btn secondary" href="seguimiento.html">Seguimiento</a>
+      </div>
       <section class="card">
         <div class="card-head">
           <h2>1. Subir archivos .enc</h2>
@@ -483,8 +485,29 @@ async function importCsv() {
   }
 
   showStatus("csvStatus", "ok", `CSV importado correctamente. Registros: ${imported}`);
-  refreshTracking();
   return true;
+}
+
+function setPeriodoUi(periodo) {
+  const value = String(periodo || "").trim();
+  const periodInput = document.getElementById("periodo");
+  const nameInput = document.getElementById("nombrePeriodo");
+  if (periodInput) periodInput.value = value;
+  if (nameInput) {
+    if (value && !nameInput.value.trim()) {
+      nameInput.value = formatPeriodoLabel(value);
+    }
+    if (!value) nameInput.value = "";
+  }
+  const label = value
+    ? (nameInput && nameInput.value.trim() ? nameInput.value.trim() : formatPeriodoLabel(value))
+    : "-";
+  setText("periodCurrentValue", label || "-");
+}
+
+function setDefaultPeriod() {
+  const urlPeriodo = qs("periodo") || "";
+  setPeriodoUi(urlPeriodo);
 }
 
 async function processPeriodo() {
@@ -511,82 +534,6 @@ async function processPeriodo() {
   linkInput.value = link;
   document.getElementById("periodLinkWrap").style.display = "block";
   loadPeriodosList();
-}
-
-function renderTable(rows) {
-  const tbody = document.getElementById("tableBody");
-  tbody.innerHTML = "";
-
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7">Sin datos para este periodo.</td></tr>`;
-    return;
-  }
-
-  for (const r of rows) {
-    const state = r.descargado_en ? "Descargado" : r.abierto_en ? "Abierto" : "Pendiente";
-    const badgeClass = r.descargado_en ? "ok" : r.abierto_en ? "info" : "pending";
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(r.empleado_id)}</td>
-      <td>${escapeHtml(r.nombre || "")}</td>
-      <td>${escapeHtml(r.periodo)}</td>
-      <td>${escapeHtml(r.archivo_path)}</td>
-      <td><span class="badge ${badgeClass}">${state}</span></td>
-      <td>${r.abierto_en ? new Date(r.abierto_en).toLocaleString() : "—"}</td>
-      <td>${r.descargado_en ? new Date(r.descargado_en).toLocaleString() : "—"}</td>
-    `;
-    tbody.appendChild(tr);
-  }
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-async function refreshTracking() {
-  const cfg = getConfig();
-  const periodo = document.getElementById("periodo").value.trim();
-  if (!periodo) return;
-
-  const { data, error } = await sb
-
-
-
-
-}
-
-function exportTracking() {
-  if (!loadedRows.length) {
-    showStatus("trackStatus", "error", "No hay datos para exportar.");
-    return;
-  }
-
-  const headers = ["empleado_id", "nombre", "periodo", "archivo_path", "estado", "abierto_en", "descargado_en"];
-  const lines = [headers.join(",")];
-
-  for (const r of loadedRows) {
-    const estado = r.descargado_en ? "Descargado" : r.abierto_en ? "Abierto" : "Pendiente";
-    const values = [
-      r.empleado_id,
-      r.nombre || "",
-      r.periodo,
-      r.archivo_path,
-      estado,
-      r.abierto_en || "",
-      r.descargado_en || ""
-    ].map(v => `"${String(v).replaceAll('"', '""')}"`);
-    lines.push(values.join(","));
-  }
-
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const periodo = document.getElementById("periodo").value.trim();
-  downloadBlob(blob, `seguimiento_${periodo}.csv`);
 }
 
 async function init() {

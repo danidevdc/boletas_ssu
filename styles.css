@@ -314,6 +314,40 @@ button:disabled {
   gap: var(--space-md);
 }
 
+.viewer-mobile-pane {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-visible);
+  border-radius: 16px;
+  background: var(--surface-raised);
+}
+
+.viewer-mobile-pane.is-hidden {
+  display: none;
+}
+
+.viewer-mobile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.viewer-page-info {
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+#viewerCanvas {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
 .viewer-label {
   font-family: var(--font-mono);
   font-size: var(--label);
