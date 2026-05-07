@@ -326,8 +326,6 @@ async function openBoleta() {
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem("theme", theme);
-  const btn = document.getElementById("themeToggle");
-  if (btn) btn.textContent = theme === "dark" ? "MODO CLARO" : "MODO OSCURO";
 }
 
 function initThemeToggle() {
